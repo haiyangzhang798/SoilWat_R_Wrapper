@@ -54,9 +54,12 @@ url.Rrepos <- "https://cran.us.r-project.org"
 
 #------Set paths to simulation framework folders
 #parent folder of simulation project
-dir.prj <- "~/YOURPROJECT"
+dir.prj <- "/glade/u/home/areeder/soilwat_r_wrapper/SoilWat_R_Wrapper"
 if(interactive()) setwd(dir.prj)
 dir.prj <- dir.runs <- getwd()
+
+#R package library path to add
+.libPaths(c(.libPaths(),"/glade/u/home/areeder/libs/r"))
 
 #parent folder containing external data
 dir.external <- "/Volumes/YOURBIGDATA/SoilWat_SimulationFrameworks/SoilWat_DataSet_External"
@@ -189,7 +192,7 @@ downscaling.method           <- c("hybrid-delta-3mod")                #one or mu
 downscaling.daily_ppt_limit  <- 1.5                                   #valid values are 0, 1.5 or 10
 downscaling.monthly_ti_limit <- 1.5                                   #valid values are 0, 1.5 or 10 ???
 downscaling.ppt_type         <- "detailed"                            #either "detailed" or "simple"
-downscaling.correct_spline   <- "attempt"                             #one of "fail", "none" or "attempt" 
+downscaling.correct_spline   <- "attempt"                             #one of "fail", "none" or "attempt"
 downscaling.extrapol_type    <- "linear_Thermessl2012CC.QMv1b"        #set to "Boe", "Thermessl2012CC.QMv1b" or "none"
 
 #Climate ensembles created across scenarios
