@@ -59,7 +59,7 @@ if(interactive()) setwd(dir.prj)
 dir.prj <- dir.runs <- getwd()
 
 #R package library path to add
-.libPaths(c(.libPaths(),"/glade/u/home/areeder/libs/r"))
+.libPaths(c("/glade/u/home/areeder/libs/r", .libPaths()))
 
 #parent folder containing external data
 dir.external <- "/Volumes/YOURBIGDATA/SoilWat_SimulationFrameworks/SoilWat_DataSet_External"
@@ -213,7 +213,7 @@ if ((any(actions == "external") || any(actions == "create") || any(actions == "e
 	datafile.cloud <- "SWRuns_InputData_cloud_v10.csv"
 	datafile.prod <- "SWRuns_InputData_prod_v10.csv"
 	datafile.siteparam <- "SWRuns_InputData_siteparam_v13.csv"
-	datafile.soils <- "SWRuns_InputData_soils_v11.csv"
+	datafile.soils <- "SWRuns_InputData_soils_WISE_v11.csv"
 	datafile.weathersetup <- "SWRuns_InputData_weathersetup_v10.csv"
 }
 if (( any(actions == "external") || any(actions == "create") || any(actions == "execute") || any(actions == "aggregate")) ) {	#input files in sub-folders ./treatments
