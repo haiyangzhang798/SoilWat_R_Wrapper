@@ -7102,8 +7102,7 @@ tryCatch({
 #------------------------
 if (any(actions == "concatenate")) {
 	t1 <- Sys.time()
-	if(!be.quiet) print(paste("Inserting Data from Temp SQL files into Database", ": started at", t1))
-
+	
 	temp <- as.double(difftime(t1, t.overall, units = "secs"))
 	
 	if (temp <= (MinTimeConcat - 36000) || !parallel_runs || !identical(parallel_backend, "mpi")) {#need at least 10 hours for anything useful
@@ -7111,18 +7110,15 @@ if (any(actions == "concatenate")) {
 		con <- DBI::dbConnect(RSQLite::SQLite(), dbname = name.OutputDB)
 		
 		do_DBCurrent <- copyCurrentConditionsFromTempSQL || copyCurrentConditionsFromDatabase
-		reset_DBCurrent <- copyCurrentConditionsFromTempSQL && (cleanDB || !file.exists(name.OutputDBCurrent))
+		reset_DBCurrent <- copyCurrentConditionsFromTempSQL && copyCurrentConditionsFromDatabase && (cleanDB || !file.exists(name.OutputDBCurrent))
 		if (reset_DBCurrent) file.copy(from = name.OutputDB, to = name.OutputDBCurrent)		
-		if (do_DBCurrent) con2 <- DBI::dbConnect(RSQLite::SQLite(), dbname = name.OutputDBCurrent)
-		if (reset_DBCurrent) dbGetQuery(con2, "DELETE FROM runs WHERE scenario_id != 1;") # DROP ALL ROWS THAT ARE NOT CURRENT FROM HEADER
 		
-		# Prepare output databases
-		set_PRAGMAs(con, PRAGMA_settings1)
-		if (do_DBCurrent) set_PRAGMAs(con2, PRAGMA_settings1)
-
 		# Locate temporary SQL files
-		theFileList <- list.files(path = dir.out.temp, pattern = "SQL",
-			full.names = FALSE, recursive = TRUE, include.dirs = FALSE, ignore.case = FALSE)
+		if (copyCurrentConditionsFromTempSQL == TRUE){
+		if(!be.quiet) print(paste("Inserting Data from Temp SQL files into Database", ": started at", t1))
+		  
+		theFileList <- list.files(path = dir.out.temp, pattern = "SQL",full.names = FALSE, recursive = TRUE, include.dirs = FALSE, ignore.case = FALSE)
+		
 		completedFiles <- if (file.exists(file.path(dir.out.temp,concatFile))) {
 				basename(readLines(file.path(dir.out.temp, concatFile)))
 			} else {
@@ -7144,66 +7140,49 @@ if (any(actions == "concatenate")) {
 				break
 			}
 			
-			OK <- TRUE
-			# Read SQL statements from temporary file
-			sql_cmds <- readLines(file.path(dir.out.temp, theFileList[j]))
-			add_to_DBCurrent <- copyCurrentConditionsFromTempSQL && grepl("SQL_Current", theFileList[j])
+			#  SQL statements to output database
+			command1 <- paste(paste(PRAGMA_settings1,collapse="\n"),"BEGIN;",paste(".read ",(file.path(dir.out.temp,theFileList[j])),sep=""),"COMMIT;",sep="\n")
+			command2 <- paste(" | sqlite3 ", shQuote(name.OutputDB))
 			
-			# Check what has already been inserted
-			pids_inserted_mean <- DBI::dbGetQuery(con, "SELECT P_id FROM aggregation_overall_mean;")[, 1]
-			pids_inserted_sd <- DBI::dbGetQuery(con, "SELECT P_id FROM aggregation_overall_sd;")[, 1]
-			if (add_to_DBCurrent) {
-				pids2_inserted_mean <- DBI::dbGetQuery(con2, "SELECT P_id FROM aggregation_overall_mean;")[, 1]
-				pids2_inserted_sd <- DBI::dbGetQuery(con2, "SELECT P_id FROM aggregation_overall_sd;")[, 1]
+			if (.Platform$OS.type == "unix") {
+			  system(paste("echo ",shQuote(command1),command2))
+			} else {	
+			  write(command1,file.path(dir.out,"insert.txt"))  
+			  insert<-normalizePath(file.path(dir.out,'insert.txt'))
+			  shell(paste("sqlite3 ", normalizePath(name.OutputDB), "<", insert))
+			  try(file.remove(insert),silent = TRUE)
+			}
+			#Copy current conditions to seperate database
+			if (copyCurrentConditionsFromDatabase == TRUE && grepl("Current",theFileList[j]) == TRUE ){
+			  #command1 <- paste(paste(PRAGMA_settings1,collapse="\n"),"BEGIN;",paste(".read ",(file.path(dir.out.temp,theFileList[j])),sep=""),"COMMIT;",sep="\n")
+			  command2 <- paste(" | sqlite3 ", shQuote(name.OutputDBCurrent))
+			  
+			  if (.Platform$OS.type == "unix") {
+			    system(paste("echo ",shQuote(command1),command2))
+			  } else {	
+			    write(command1,file.path(dir.out,"insert.txt"))  
+			    insert<-normalizePath(file.path(dir.out,'insert.txt'))
+			    shell(paste("sqlite3 ", normalizePath(name.OutputDBCurrent), "<", insert))
+			    try(file.remove(insert),silent = TRUE)
+			  }
+			  con2 <- DBI::dbConnect(RSQLite::SQLite(), dbname = name.OutputDBCurrent)
+			  dbGetQuery(con2, "DELETE FROM runs WHERE scenario_id != 1;") # DROP ALL ROWS THAT ARE NOT CURRENT FROM HEADER
+			  DBI::dbDisconnect(con2)
 			}
 			
-			# Send SQL statements to database
-			OK <- OK && DBI::dbBegin(con)
-			if (add_to_DBCurrent) OK <- OK && DBI::dbBegin(con2)
-			
-			for (k in seq_along(sql_cmds)) {
-				id <- as.integer(substr(sql_cmds[k],
-									8 + regexpr("VALUES (", sql_cmds[k], fixed = TRUE),
-									-1 + regexpr(",", sql_cmds[k], fixed = TRUE)))
-				
-				if (grepl("aggregation_overall_mean", sql_cmds[k])) {
-					do_insert <- !(id %in% pids_inserted_mean)
-					do_insert2 <- if (add_to_DBCurrent) !(id %in% pids2_inserted_mean) else FALSE
-				
-				} else if (grepl("aggregation_overall_sd", sql_cmds[k])) {
-					do_insert <- !(id %in% pids_inserted_sd)
-					do_insert2 <- if (add_to_DBCurrent) !(id %in% pids2_inserted_sd) else FALSE
-				}
-								
-				if (do_insert) {
-					res <- try(DBI::dbSendQuery(con, sql_cmds[k]))
-					OK <- OK && !inherits(res, "try-error")
-				}
-				if (do_insert2) {
-					res <- try(DBI::dbSendQuery(con2, sql_cmds[k]))
-					OK <- OK && !inherits(res, "try-error")
-				}
-					
-				if (!OK) break
-			}
-			
-			OK <- OK && DBI::dbCommit(con)
-			if (add_to_DBCurrent) OK <- OK && DBI::dbCommit(con2)
-			
-			# Clean up and report
-			if (OK) {
 				write(file.path(dir.out.temp, theFileList[j]), file = file.path(dir.out.temp,concatFile), append = TRUE)
 				if (deleteTmpSQLFiles)
 					try(file.remove(file.path(dir.out.temp, theFileList[j])), silent = TRUE)
-			}
+			
 			if (print.debug) {
 				tDB <- round(difftime(Sys.time(), tDB1, units = "secs"), 2)
 				print(paste("    ended at", Sys.time(), "after", tDB, "s"))
 			}
 		}
-
+		DBI::dbDisconnect(con)
 		if (!be.quiet) print(paste("Database complete in :",  round(difftime(Sys.time(), t1, units="secs"), 2), "s"))
-
+		}
+		
 		if(copyCurrentConditionsFromDatabase & !copyCurrentConditionsFromTempSQL) {
 			if(!be.quiet) print(paste("Database is copied and subset to ambient condition: start at ",  Sys.time()))
 			#Get sql for tables and index
