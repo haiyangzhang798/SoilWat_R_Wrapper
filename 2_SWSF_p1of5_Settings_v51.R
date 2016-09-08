@@ -176,7 +176,7 @@ do.ExtractExternalDatasets <- c(
 		#Daily weather data for current conditions
 		"GriddedDailyWeatherFromMaurer2002_NorthAmerica", 0,	#1/8-degree resolution
 		"GriddedDailyWeatherFromDayMet_NorthAmerica", 0,	#1-km resolution
-    "GriddedDailyWeatherFromLivneh2013_NorthAmerica", 0,           # 1/16-degree resolution
+    "GriddedDailyWeatherFromLivneh2013_NorthAmerica", 0, # 1/16-degree resolution
 		"GriddedDailyWeatherFromNRCan_10km_Canada", 0,	# can only be used together with database
 		"GriddedDailyWeatherFromNCEPCFSR_Global", 0, # can only be used together with database
 
