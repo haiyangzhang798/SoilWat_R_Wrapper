@@ -96,7 +96,7 @@ dir.out <- file.path(dir.big, "4_Data_SWOutputAggregated")	#path to aggregated o
 #		- "concatenate": moves results from the simulation runs (temporary text files) to a SQL-database
 #		- "ensemble": calculates 'ensembles' across climate scenarios and stores the results in additional SQL-databases as specified by 'ensemble.families' and 'ensemble.levels'
 actions <- c("create", "execute", "aggregate", "concatenate")
-#continues with unfinished part of simulation after abort if TRUE, i.e., 
+#continues with unfinished part of simulation after abort if TRUE, i.e.,
 #	- it doesn't delete an existing weather database, if a new one is requested
 #	- it doesn't re-extract external information (soils, elevation, climate normals, NCEPCFSR) if already extracted
 # - it doesn't lookup values from tables if already available in input datafiles, i.e., 'LookupEvapCoeffFromTable', 'LookupTranspRegionsFromTable', and 'LookupSnowDensityFromTable'
@@ -137,7 +137,7 @@ ensembleCollectSize <- 500 #This value is the chunk size for reads of 'runID' fr
 #Daily weather data: must be one of dailyweather_options; WeatherFolder in MasterInput.csv, treatmentDesign.csv, or experimentalDesign.csv
 # If a run has multiple sources for daily weather, then take the one in the first position of dailyweather_options if availble, if not then second etc.
 #	do not change/remove/add entries; only re-order to set different priorities
-dailyweather_options <- c("DayMet_NorthAmerica", "LookupWeatherFolder", "Maurer2002_NorthAmerica", "NRCan_10km_Canada", "NCEPCFSR_Global")
+dailyweather_options <- c("DayMet_NorthAmerica", "LookupWeatherFolder", "Maurer2002_NorthAmerica", "NRCan_10km_Canada", "NCEPCFSR_Global", "Livneh2013_NorthAmerica")
 #Daily weather database
 getCurrentWeatherDataFromDatabase <- TRUE
 getScenarioWeatherDataFromDatabase <- TRUE
@@ -147,7 +147,7 @@ dbW_compression_type <- "gzip" # one of eval(formals(memCompress)[[2]]); this on
 
 #-Spatial setup of simulations
 # Should the locations of 'SWRunInformation' interpreted as 2D-cells of a raster/grid or as 1D-sites
-# sim_cells_or_points: currently, implemented for 
+# sim_cells_or_points: currently, implemented for
 # - actions == "map_inputs"
 # - external extractions:
 #	- soils: "ExtractSoilDataFromISRICWISEv12_Global", "ExtractSoilDataFromCONUSSOILFromSTATSGO_USA",
@@ -176,6 +176,7 @@ do.ExtractExternalDatasets <- c(
 		#Daily weather data for current conditions
 		"GriddedDailyWeatherFromMaurer2002_NorthAmerica", 0,	#1/8-degree resolution
 		"GriddedDailyWeatherFromDayMet_NorthAmerica", 0,	#1-km resolution
+    "GriddedDailyWeatherFromLivneh2013_NorthAmerica", 0,           # 1/16-degree resolution
 		"GriddedDailyWeatherFromNRCan_10km_Canada", 0,	# can only be used together with database
 		"GriddedDailyWeatherFromNCEPCFSR_Global", 0, # can only be used together with database
 
