@@ -328,11 +328,6 @@ create_filename_for_Maurer2002_NorthAmerica <- compiler::cmpfun(function(X_WGS84
   gsub("[[:space:]]", "", paste("data", formatC(28.8125+round((Y_WGS84-28.8125)/0.125,0)*0.125, digits=4, format="f"), formatC(28.8125+round((X_WGS84-28.8125)/0.125,0)*0.125, digits=4, format="f"), sep="_"))
 })
 
-create_filename_for_Livneh2013_NorthAmerica <- compiler::cmpfun(function(X_WGS84, Y_WGS84)) {
-  gsub("[[:space:]]", "", paste("data", formatC(28.8125+round((Y_WGS84-28.8125)/0.125,0)*0.125, digits=4, format="f"), formatC(28.8125+round((X_WGS84-28.8125)/0.125,0)*0.125, digits=4, format="f"), sep="_"))
-  # TODO
-}
-
 simTiming <- compiler::cmpfun(function(startyr, simstartyr, endyr) {
   res <- list()
   #simyrs <- simstartyr:endyr
@@ -1798,39 +1793,10 @@ ExtractGriddedDailyWeatherFromMaurer2002_NorthAmerica <- compiler::cmpfun(functi
   weathDataList
 })
 
-ExtractGriddedDailyWeatherFromLivneh2013_NorthAmerica <- compiler::cmpfun(function(dir_data, cellname, startYear = simstartyr, endYear = endyr) {
-    weath.data <- try(read.table(file=file.path(dir_data, cellname), comment.char=""), silent=TRUE)
-    weathDataList <- list()
-    # TODO
-    if(!inherits(weath.data, "try-error")){
-      colnames(weath.data) <- c("year", "month", "day", "prcp_mm", "Tmax_C", "Tmin_C", "Wind_mPERs")
-
-      #times
-      date <- seq(from=as.Date(with(weath.data[1, ], paste(year, month, day, sep="-")), format="%Y-%m-%d"),
-          to=as.Date(with(weath.data[nrow(weath.data), ], paste(year, month, day, sep="-")), format="%Y-%m-%d"),
-          by="1 day")
-
-      # conversion precipitation: mm/day -> cm/day
-      data_all <- with(weath.data, data.frame(doy=1 + as.POSIXlt(date)$yday, Tmax_C, Tmin_C, prcp_mm/10))
-      colnames(data_all) <- c("DOY", "Tmax_C", "Tmin_C", "PPT_cm")
-
-      years <- startYear:endYear
-      n_years <- length(years)
-      if(!all(years %in% unique(weath.data$year)))
-        stop("simstartyr or endyr out of weather data range")
-      for(y in seq_along(years)) {
-        data_sw <- data_all[weath.data$year == years[y], ]
-        data_sw[, -1] <- round(data_sw[, -1], 2) #weather.digits
-        weathDataList[[y]]<-new("swWeatherData",
-                                year = years[y],
-                                data = data.matrix(data_sw, rownames.force = FALSE)) #strip row.names, otherwise they consume about 60% of file size
-      }
-      names(weathDataList) <- as.character(years)
-      weath.data <- weathDataList
-    }
-
-    weathDataList
-}
+ExtractGriddedDailyWeatherFromLivneh2013_NorthAmerica <- #TODO DB contains tmax, tmin and ppt
+  # Livneh B., T.J. Bohn, D.S. Pierce, F. Munoz-Ariola, B. Nijssen, R. Vose, D. Cayan, and L.D. Brekke, 2015:
+  # A spatially comprehensive, hydrometeorological data set for Mexico, the U.S., and southern Canada 1950-2013,
+  # Nature Scientific Data, 5:150042, doi:10.1038/sdata.2015.42.
 
 
 get_DayMet_cellID <- compiler::cmpfun(function(coords_WGS84) {

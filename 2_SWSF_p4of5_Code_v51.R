@@ -553,12 +553,12 @@ if(exinfo$GriddedDailyWeatherFromMaurer2002_NorthAmerica){
 	stopifnot(file.exists(dir.ex.maurer2002))
 }
 
-if (exinfo$GriddedDailyWeatherFromLivneh2013_NorthAmerica) {
+if (exinfo$GriddedDailyWeatherFromLivneh2013_NorthAmerica) { #TODO createAndPopulateWeatherDatabase?
 	#extract daily weather information for the grid cell coded by latitude/longitude for each simulation run
 	#Citation: Livneh et al., 2013 Meteorological Forcings and Hydrological Outputs, 0.0625 Degree
 	#					 http://www.hydro.washington.edu/Lettenmaier/Data/livneh/livneh.et.al.2013.page.html
 
-	dir.ex.livneh2013 <- file.path(dir.ex.weather, "Livneh_2013", "DAILY_FORCINGS")
+	dir.ex.livneh2013 <- file.path(dir.ex.weather, "Livneh_2013", "DAILY_FORCINGS") #TODO verify
 	stopifnot(file.exists(dir.ex.livneh2013))
 }
 
@@ -622,16 +622,7 @@ if(do_weather_source){
 	}
 
 	dw_Livneh2013_NorthAmerica <- function() {
-		if (exinfo$GriddedDailyWeatherFromLivneh2013_NorthAmerica && (simstartyr >= 1915 && endyr <= 2011)) {
-			Livneh <- with(SWRunInformation[runIDs_sites, ], create_filename_for_Livneh2013_NorthAmerica(X_WGS84, Y_WGS84))
-			there <- sapply(Livneh, FUN=function(im) file.exists(file.path(dir.ex.livneh2013, im)))
-			if(sum(there) > 0){
-				sites_dailyweather_source[there] <<- "Livneh2013_NorthAmerica"
-				sites_dailyweather_names[there] <<- paste0(SWRunInformation$Label[runIDs_sites][there], "_", Livneh[there])
-			}
-			if(!be.quiet) print(paste("Data for", sum(there), "sites will come from 'Livneh2013_NorthAmerica'"))
-		}
-		invisible(0)
+		//TODO
 	}
 
 	dw_DayMet_NorthAmerica <- function(){
@@ -2068,13 +2059,6 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 									startYear = simstartyr,
 									endYear = endyr)
 
-			} else if (i_SWRunInformation$dailyweather_source == "Livneh2013_NorthAmerica"){
-				dirname.sw.runs.weather <- with(i_SWRunInformation, create_filename_for_Livneh2013_NorthAmerica(X_WGS84, Y_WGS84))
-				i_sw_weatherList[[1]] <- ExtractGriddedDailyWeatherFromLivneh2013_NorthAmerica(
-				          dir_data = dir.ex.livneh2013,
-				          cellname = dirname.sw.runs.weather,
-									startYear = simstartyr,
-									endYear = endyr)
 			} else if (i_SWRunInformation$dailyweather_source == "DayMet_NorthAmerica") {
 				i_sw_weatherList[[1]] <- with(i_SWRunInformation,
 				  ExtractGriddedDailyWeatherFromDayMet_NorthAmerica_swWeather(
@@ -5736,7 +5720,7 @@ if(actionWithSoilWat && runsN_todo > 0){
 		"daily_lyr_agg", "daily_lyr_agg", "daily_no",
 		"datafile.windspeedAtHeightAboveGround", "dbOverallColumns",
 		"dbWeatherDataFile", "debug.dump.objects", "DegreeDayBase", "Depth_TopLayers",
-		"Depth_TopLayers", "dir.create2", "dir.ex.daymet", "dir.ex.livneh2013", "dir.ex.maurer2002",
+		"Depth_TopLayers", "dir.create2", "dir.ex.daymet", "dir.ex.maurer2002",
 		"dir.out.temp", "dir.out", "dir.prj", "dir.sw.in.tr", "dir.sw.runs",
 		"dirname.sw.runs.weather", "do_OneSite", "do.GetClimateMeans",
 		"done_prior", "endDoyAfterDuration", "endyr", "estabin", "estabin",

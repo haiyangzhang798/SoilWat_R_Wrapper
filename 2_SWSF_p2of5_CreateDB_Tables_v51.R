@@ -38,14 +38,10 @@ if (createAndPopulateWeatherDatabase) {
 	# Extract weather data per site
 	if (!be.quiet) print(paste(Sys.time(), "started with moving single site weather data to database"))
 
-	ids_single <- which(sites_dailyweather_source %in% c("LookupWeatherFolder", "Maurer2002_NorthAmerica", "Livneh2013_NorthAmerica")) ## position in 'runIDs_sites'
+	ids_single <- which(sites_dailyweather_source %in% c("LookupWeatherFolder", "Maurer2002_NorthAmerica")) ## position in 'runIDs_sites'
 	if (length(ids_single) > 0) {
 		if (any(sites_dailyweather_source == "Maurer2002_NorthAmerica"))
 			Maurer <- with(SWRunInformation[runIDs_sites[ids_single], ], create_filename_for_Maurer2002_NorthAmerica(X_WGS84, Y_WGS84))
-			
-		if (any(sites_dailyweather_source == "Livneh2013_NorthAmerica")) {
-			Livneh <- with(SWRunInformation[runIDs_sites[ids_single], ], create_filename_for_Livneh2013_NorthAmerica(X_WGS84, Y_WGS84))
-		}
 
 		for (i in seq_along(ids_single)) {
 			i_idss <- ids_single[i]
@@ -65,12 +61,6 @@ if (createAndPopulateWeatherDatabase) {
 									startYear = simstartyr,
 									endYear = endyr)
 
-			} else if (sites_dailyweather_source[i_idss] == "Livneh2013_NorthAmerica") {
-				weatherData <- ExtractGriddedDailyWeatherFromLivneh2013_NorthAmerica(
-				          dir_data = dir.ex.livneh2013,
-				          cellname = Livneh[i],
-									startYear = simstartyr,
-									endYear = endyr)
 			} else {
 				stop(paste(sites_dailyweather_source[i_idss], "not implemented"))
 			}
@@ -103,6 +93,21 @@ if (createAndPopulateWeatherDatabase) {
 			dbW_compression_type = dbW_compression_type)
 	}
 	rm(ids_DayMet_extraction)
+
+	ids_livneh_extraction <- runIDs_sites[which(sites_dailyweather_source == "Livneh2013_NorthAmerica")]
+	if (length(ids_livneh_extraction) > 0) {
+		ExtractGriddedDailyWeatherFromLivneh2013_NorthAmerica(
+		  dir_data = dir.ex.NRCan,
+		  site_ids = SWRunInformation$site_id[ids_livneh_extraction],
+			coords_WGS84 = SWRunInformation[ids_livneh_extraction, c("X_WGS84", "Y_WGS84"), drop = FALSE],
+			start_year = simstartyr,
+			end_year = endyr,
+			dir_temp = dir.out.temp,
+			dbW_compression_type = dbW_compression_type,
+			do_parallel = parallel_runs && identical(parallel_backend, "snow"),
+			ncores = num_cores)
+	}
+	rm(ids_livneh_extraction)
 
 	ids_NRCan_extraction <- runIDs_sites[which(sites_dailyweather_source == "NRCan_10km_Canada")]
 	if (length(ids_NRCan_extraction) > 0) {
