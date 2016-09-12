@@ -1801,7 +1801,7 @@ ExtractGriddedDailyWeatherFromMaurer2002_NorthAmerica <- compiler::cmpfun(functi
 ExtractGriddedDailyWeatherFromLivneh2013_NorthAmerica <- compiler::cmpfun(function(dir_data, cellname, startYear = simstartyr, endYear = endyr) {
     weath.data <- try(read.table(file=file.path(dir_data, cellname), comment.char=""), silent=TRUE)
     weathDataList <- list()
-
+    # TODO
     if(!inherits(weath.data, "try-error")){
       colnames(weath.data) <- c("year", "month", "day", "prcp_mm", "Tmax_C", "Tmin_C", "Wind_mPERs")
 
