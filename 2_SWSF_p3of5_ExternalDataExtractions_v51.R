@@ -2057,6 +2057,104 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 					years <- as.integer(names(scen.fut.daily))
 					types[[length(types)+1]] <- list(Site_id=site_id, Scenario_id=scenario_id, StartYear=years[1], EndYear=years[length(years)], weatherData=data_blob)
 				}
+				
+				if ("wgen-package" %in% downs) {
+				  require("zoo")
+				  scenario_id <- dbW_iScenarioTable[dbW_iScenarioTable[, "Scenario"] == tolower(paste("hybrid-delta-3mod", tag, gcm, sep=".")), "id"]     
+				  set.seed(1) # Necessary to avoid !all(p>0) Error
+				  mydate <- do.call("c", lapply(mystuff$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-"))))
+				  temp_wyear <- wyear(mydate)
+				  temp_date <- do.call("c", lapply(mystuff$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-"))))
+				  temp_tmax <- do.call("c", lapply(mystuff$DAILY, function(x)  x@data[,'Tmax_C']))
+				  temp_tmin <- do.call("c", lapply(mystuff$DAILY, function(x)  x@data[,'Tmin_C']))
+				  temp_t    <- (temp_tmin + temp_tmax) / 2
+				  my_day <- data.frame(WYEAR = temp_wyear, # do.call("c", lapply(mystuff$DAILY, function(x) {rep(x@year, max(x@data[,"DOY"]) ) })),
+				                       MONTH = format(temp_date, "%m"),
+				                       DATE  = mydate,     #  do.call("c", lapply(mystuff$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-")))),
+				                       PRCP  = do.call("c", lapply(mystuff$DAILY, function(x)  x@data[,'PPT_cm'])),
+				                       TEMP  = temp_t,
+				                       TMIN  = temp_tmin,
+				                       TMAX  = temp_tmax,
+				                       WIND  = NA)
+				  colnames(my_day) <- c("WYEAR","MONTH","DATE","PRCP","TEMP","TMIN","TMAX","WIND")
+				  
+				  climwyear <- group_by(my_day, WYEAR=wyear(DATE)) %>%
+				    summarise(N=n(),
+				              PRCP=sum(PRCP),
+				              TMAX=mean(TMAX),
+				              TMIN=mean(TMIN),
+				              TEMP=mean(TEMP))                        
+				  complete_years <- climwyear$WYEAR[which(climwyear$N>=365)] 
+				  wyear_list <- list(temp_wyear)
+				  my_wyr <- data.frame(WYEAR = complete_years,
+				                       PRCP  =  climwyear$PRCP[which(climwyear$N>=365)],  #aggregate(my_day$PRCP, by=wyear_list, FUN=sum)[,2],
+				                       TEMP  =  climwyear$TEMP[which(climwyear$N>=365)],  #aggregate(my_day$TEMP, FUN=mean,by=wyear_list)[,2],
+				                       TMIN  =  climwyear$TMIN[which(climwyear$N>=365)],  #aggregate( my_day$TMIN,FUN=mean,by=wyear_list)[,2] ,
+				                       TMAX  =  climwyear$TMAX[which(climwyear$N>=365)],  #aggregate( my_day$TMAX,FUN=mean,by=wyear_list)[,2],
+				                       WIND  =  NA                                        #aggregate( my_day$WIND,FUN=mean,by=wyear_list)[,2]
+				  )				  
+				  
+				  my_obs_dat <- list(day=my_day, wyr=my_wyr)
+				  
+				  my_zoo_day <- zoo(x = my_obs_dat[['day']][, c('PRCP', 'TEMP', 'TMIN', 'TMAX', 'WIND')],
+				                    order.by = my_obs_dat[['day']][['DATE']])
+				  temp.fut.daily <- weathergen::wgen_daily(my_zoo_day, #Thresholds should be set
+				                                           n_year=3,
+				                                           start_water_year = 2000)
+				  
+				  # myobs_df <- as.data.frame(my_zoo_day)
+				  # myobs_df[, 'DATE'] <- time(my_zoo_day)
+				  # myobs_df[, 'WYEAR'] <- wyear(myobs_df[['DATE']], start_month = 10)
+				  # myobs_df[, 'MONTH'] <- month(myobs_df[['DATE']])
+				  # rownames(myobs_df) <- NULL
+				  # 
+				  # myobs_wyr <- dplyr::group_by(myobs_df, WYEAR)
+				  # myobs_wyr <- dplyr::summarize(myobs_wyr,
+				  #                               PRCP=sum(PRCP),
+				  #                               TEMP=mean(TEMP),
+				  #                               TMIN=mean(TMIN),
+				  #                               TMAX=mean(TMAX),
+				  #                               WIND=mean(WIND))
+				  # sim_annual <- sim_annual_arima(x = myobs_wyr[['PRCP']], start_year = 2010, n_year = 31)
+				  # myobs_wyr["PRCP"]
+				  # do.call("c", myobs_wyr["PRCP"])
+				  # set.seed(1)
+				  # wa <- wavelet_analysis(do.call("c", myobs_wyr["PRCP"]), do.call("c", myobs_wyr["WYEAR"]),sig.level=0.9, "white")
+				  # # wa SIGNIF = wa$gws.sig$signif * wa$sigma2
+				  # set.seed(1)
+				  # wc <- wavelet_components( do.call("c", myobs_wyr["PRCP"]), wa, n.periods=1, sig.periods=c(8,9,10,11,12,13,14,15), n.comp.periods=8) 
+				  # 
+				  # # fit ARIMA model
+				  # ar_models <- list()
+				  # for (k in 1:dim(wc)[2]) {
+				  #   ar_models[[k]] <- forecast::auto.arima(wc[,k], max.p=2, max.q=2, max.P=0, max.Q=0, stationary=TRUE)
+				  # }
+				  # # simulation ARIMA model
+				  # sim_x <- arima_simulate(model=ar_models[[2]], n=31)
+				  # sim_y <- arimas_simulate(ar_models,31,TRUE)
+				  # # create output zoo object
+				  # sim_years <- seq(start_year, by = 1, length.out = n_year)
+				  # #out <- zoo::zoo(x = sim_x, order.by = sim_years)
+				  
+				  if (inherits(scen.fut.daily, "try-error")) {#delta-hybrid-3mod unsuccessful, replace with delta method
+				    scen.fut.daily <- downscale.delta(obs.hist.daily, obs.hist.monthly, scen.hist.monthly, scen.fut.monthly,
+				                                      years = sim_years,
+				                                      DScur_startyear = DScur_startyr, DScur_endyear = DScur_endyr,
+				                                      DSfut_startyear = future_yrs[it, "DSfut_startyr"], DSfut_endyear = future_yrs[it, "DSfut_endyr"],
+				                                      downscaling.options = downscaling.options,
+				                                      dailyPPTceiling = dailyPPTceiling,
+				                                      do_checks = FALSE)
+				    stopifnot(!inherits(scen.fut.daily, "try-error"))
+				    print(paste0(i, ", site_id = ", site_id, ", scenario_id = ", scenario_id, ", ", tolower(paste(tag, gcm, sep=".")), ", timeslice = ", rownames(future_yrs)[it], ": delta-hybrid-3mod replaced by delta method for monthly->daily"))
+				  }
+				  
+				  
+				  data_blob <- dbW_weatherData_to_blob(scen.fut.daily, compression_type)
+				  years <- as.integer(names(scen.fut.daily))
+				  types[[length(types)+1]] <- list(Site_id=site_id, Scenario_id=scenario_id, StartYear=years[1], EndYear=years[length(years)], weatherData=data_blob)
+				}				
+				
+				
 			}
 			wdataOut[[ir]] <- types
 		}
