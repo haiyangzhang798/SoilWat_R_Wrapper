@@ -2194,7 +2194,7 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 
 			# extract the GCM data depending on parallel backend
 			if (identical(parallel_backend, "mpi")) {
-				exportObjects(list.export)
+				export_objects_to_workers(list.export, list(parent = parent.frame()), "mpi")
 				if (is_NEX && useRCurl && !saveNEXtempfiles)
 					Rmpi::mpi.bcast.cmd(library("RCurl", quietly=TRUE))
 				if (is_GDODCPUCLLNL)
@@ -2225,7 +2225,8 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 				Rmpi::mpi.bcast.cmd(gc())
 
 			} else if (identical(parallel_backend, "snow")) {
-				snow::clusterExport(cl, list.export, envir=parent.frame())
+				export_objects_to_workers(list.export, list(parent = parent.frame()), "snow", cl)
+
 				if (is_NEX && useRCurl && !saveNEXtempfiles)
 					snow::clusterEvalQ(cl, library("RCurl", quietly = TRUE))
 				if (is_GDODCPUCLLNL)
@@ -3043,7 +3044,7 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 
 					#call the simulations depending on parallel backend
 					if (identical(parallel_backend, "mpi")) {
-						exportObjects(list.export)
+				    export_objects_to_workers(list.export, list(parent = parent.frame()), "mpi")
 						Rmpi::mpi.bcast.cmd(library(raster, quietly=TRUE))
 
 						sim_cells_SUIDs <- Rmpi::mpi.applyLB(x=is_ToDo, fun=extract_SUIDs, res = cell_res_wise, grid = grid_wise, sp_sites = run_sites_wise)
@@ -3051,8 +3052,9 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 
 						Rmpi::mpi.bcast.cmd(rm(list=ls()))
 						Rmpi::mpi.bcast.cmd(gc())
+
 					} else if (identical(parallel_backend, "snow")) {
-						snow::clusterExport(cl, list.export, envir=parent.frame())
+				    export_objects_to_workers(list.export, list(parent = parent.frame()), "snow", cl)
 						snow::clusterEvalQ(cl, library(raster, quietly = TRUE))
 
 						sim_cells_SUIDs <- snow::clusterApplyLB(cl, x=is_ToDo, fun=extract_SUIDs, res = cell_res_wise, grid = grid_wise, sp_sites = run_sites_wise)
@@ -3060,15 +3062,16 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 
 						snow::clusterEvalQ(cl, rm(list=ls()))
 						snow::clusterEvalQ(cl, gc())
+
 					} else if (identical(parallel_backend, "multicore")) {
 						packages.export <- "raster"
-						sim_cells_SUIDs <- foreach(i=is_ToDo, .combine="rbind", .errorhandling="remove", .inorder=FALSE, .export=list.export, .packages=packages.export) %dopar%
+						sim_cells_SUIDs <- foreach(i=is_ToDo, .combine="rbind", .inorder=FALSE, .export=list.export, .packages=packages.export) %dopar%
 							extract_SUIDs(i, res = cell_res_wise, grid = grid_wise, sp_sites = run_sites_wise)
 					} else {
 						sim_cells_SUIDs <- NULL
 					}
 				} else {
-					sim_cells_SUIDs <- foreach(i=is_ToDo, .combine="rbind", .errorhandling="remove", .inorder=FALSE) %do%
+					sim_cells_SUIDs <- foreach(i=is_ToDo, .combine="rbind", .inorder=FALSE) %do%
 						extract_SUIDs(i, res = cell_res_wise, grid = grid_wise, sp_sites = run_sites_wise)
 				}
 			}
@@ -3079,11 +3082,11 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 			#- Calculate simulation cell wide weighted values based on each PRID weighted by SUID.fraction x PRIP.PROP
 			dat_wise <- read.csv(file=file.path(dir.ex.dat, "WISEsummaryFile.csv"))
 
-			get_prids <- compiler::cmpfun(function(suid) {
+			get_prids <- compiler::cmpfun(function(suid, dat_wise) {
 				soils <- dat_wise[dat_wise$SUID == suid, ]
 				frac <- unique(soils[, c("PROP", "PRID")])
 				depth <- tapply(soils$BotDep, soils$PRID, max)
-				idepth <- depth[match(frac$PRID, depth[, 1]), 2]
+				idepth <- depth[match(frac$PRID, names(depth))]
 
 				list(PRIDs_N = nrow(soils) / layer_N,
 					 PRID = frac$PRID,
@@ -3101,7 +3104,7 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 			template_simulationSoils["soildepth"] <- 0
 
 			#cells with no soil values have SUID=c(0=Water, 6997=Water, 6694=Rock, or 6998=Glacier)
-			calc_weightedMeanForSimulationCell <- compiler::cmpfun(function(i, i_sim_cells_SUIDs, simulationSoils, layer_N, layer_Nsim, layer_TopDep) {
+			calc_weightedMeanForSimulationCell <- compiler::cmpfun(function(i, i_sim_cells_SUIDs, simulationSoils, layer_N, layer_Nsim, layer_TopDep, dat_wise) {
 				#Init
 				simulationSoils["i"] <- i
 				simulation_frac <- 0	#fraction of how much this simulation cell is covered with suids and prids that have a soildepth > 0 cm
@@ -3111,7 +3114,7 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 
 				#Do calculations if any soils in this simulation cell
 				if (i_sim_cells_SUIDs$SUIDs_N > 0) {
-					this_simCell <- c(i_sim_cells_SUIDs, soils = list(t(sapply(i_sim_cells_SUIDs$SUID, FUN = get_prids))))
+					this_simCell <- c(i_sim_cells_SUIDs, soils = list(t(sapply(i_sim_cells_SUIDs$SUID, FUN = get_prids, dat_wise = dat_wise))))
 
 					for (is in seq_len(this_simCell$SUIDs_N)) {	#loop through the suids within this simulation cell; each suid may be composed of several prids
 						prids_frac <- this_simCell$soils[is,]$fraction * this_simCell$fraction[is]	#vector of the fractions of each prid in relation to the simulation cell
@@ -3155,53 +3158,62 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 			})
 
 
-			try_weightedMeanForSimulationCell <- compiler::cmpfun(function(i, sim_cells_SUIDs, template_simulationSoils, layer_N, layer_Nsim, layer_TopDep) {
+			try_weightedMeanForSimulationCell <- compiler::cmpfun(function(i, sim_cells_SUIDs, template_simulationSoils, layer_N, layer_Nsim, layer_TopDep, dat_wise = dat_wise) {
 				if (i %% 1000 == 0) print(paste(Sys.time(), "done:", i))
 
-				temp <- calc_weightedMeanForSimulationCell(i,
+				temp <- try(calc_weightedMeanForSimulationCell(i,
 							i_sim_cells_SUIDs = sim_cells_SUIDs[i, ],
 							simulationSoils = template_simulationSoils,
-							layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep)
+							layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep,
+							dat_wise = dat_wise))
 				if (inherits(temp, "try-error")) template_simulationSoils else temp
 			})
 
 			if (parallel_runs && parallel_init) {
 				#objects that need exporting to slaves
 				list.export <- c("get_prids", "dat_wise", "layer_TopDep", "layer_N", "get_SoilDatValuesForLayer", "layer_Nsim", "calc_weightedMeanForSimulationCell", "try_weightedMeanForSimulationCell", "template_simulationSoils", "sim_cells_SUIDs")
+
 				#call the simulations depending on parallel backend
 				if (identical(parallel_backend, "mpi")) {
-					exportObjects(list.export)
+				  export_objects_to_workers(list.export, list(parent = parent.frame()), "mpi")
 
 					sim_cells_soils <- Rmpi::mpi.applyLB(x = is_ToDo, fun = try_weightedMeanForSimulationCell,
 						sim_cells_SUIDs = sim_cells_SUIDs,
 						template_simulationSoils = template_simulationSoils,
-						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep)
+						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep,
+						dat_wise = dat_wise)
 					sim_cells_soils <- do.call(rbind, sim_cells_soils)
 
 					Rmpi::mpi.bcast.cmd(rm(list=ls()))
 					Rmpi::mpi.bcast.cmd(gc())
+
 				} else if (identical(parallel_backend, "snow")) {
-					snow::clusterExport(cl, list.export, envir=parent.frame())
+				  export_objects_to_workers(list.export, list(parent = parent.frame()), "snow", cl)
 
 					sim_cells_soils <- snow::clusterApplyLB(cl, x = is_ToDo, fun = try_weightedMeanForSimulationCell,
 						sim_cells_SUIDs = sim_cells_SUIDs,
 						template_simulationSoils = template_simulationSoils,
-						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep)
+						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep,
+						dat_wise = dat_wise)
 					sim_cells_soils <- do.call(rbind, sim_cells_soils)
 
 					snow::clusterEvalQ(cl, rm(list=ls()))
 					snow::clusterEvalQ(cl, gc())
+
 				} else if (identical(parallel_backend, "multicore")) {
-					sim_cells_soils <- foreach(i=is_ToDo, .combine="rbind", .errorhandling="remove", .inorder=FALSE, .export=list.export) %dopar%
+					sim_cells_soils <- foreach(i=is_ToDo, .combine="rbind", .inorder=FALSE, .export=list.export) %dopar%
 						try_weightedMeanForSimulationCell(i, sim_cells_SUIDs = sim_cells_SUIDs,
 						template_simulationSoils = template_simulationSoils,
-						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep)
+						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep,
+						dat_wise = dat_wise)
 				}
+
 			} else {
-				sim_cells_soils <- foreach(i=is_ToDo, .combine="rbind", .errorhandling="remove", .inorder=FALSE) %do%
+				sim_cells_soils <- foreach(i=is_ToDo, .combine="rbind", .inorder=FALSE) %do%
 					try_weightedMeanForSimulationCell(i, sim_cells_SUIDs = sim_cells_SUIDs,
 						template_simulationSoils = template_simulationSoils,
-						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep)
+						layer_N = layer_N, layer_Nsim = layer_Nsim, layer_TopDep = layer_TopDep,
+						dat_wise = dat_wise)
 			}
 			rm(dat_wise)
 
