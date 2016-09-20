@@ -2064,52 +2064,54 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 				  require("weathergen")
 				  scenario_id <- dbW_iScenarioTable[dbW_iScenarioTable[, "Scenario"] == tolower(paste("weathergen", tag, gcm, sep=".")), "id"]     
 				  # set.seed(1) # Necessary to avoid !all(p>0) Error
-				  mydate <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-"))))
-				  temp_wyear <- wyear(mydate)
-				  temp_date <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-"))))
-				  temp_tmax <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  x@data[,'Tmax_C']))
-				  temp_tmin <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  x@data[,'Tmin_C']))
-				  temp_t    <- (temp_tmin + temp_tmax) / 2
-				  my_day <- data.frame(WYEAR = temp_wyear, # do.call("c", lapply(obs.hist.daily$DAILY, function(x) {rep(x@year, max(x@data[,"DOY"]) ) })),
-				                       MONTH = format(temp_date, "%m"),
-				                       DATE  = mydate,     #  do.call("c", lapply(obs.hist.daily$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-")))),
-				                       PRCP  = do.call("c", lapply(mystuff$DAILY, function(x)  x@data[,'PPT_cm'])),
-				                       TEMP  = temp_t,
-				                       TMIN  = temp_tmin,
-				                       TMAX  = temp_tmax,
-				                       WIND  = NA)
-          min_10_1_idx <- my_day[]
-				  colnames(my_day) <- c("WYEAR","MONTH","DATE","PRCP","TEMP","TMIN","TMAX","WIND")
+				  # mydate <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-"))))
+				  # temp_wyear <- wyear(mydate)
+				  # temp_date <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-"))))
+				  # temp_tmax <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  x@data[,'Tmax_C']))
+				  # temp_tmin <- do.call("c", lapply(obs.hist.daily$DAILY, function(x)  x@data[,'Tmin_C']))
+				  # temp_t    <- (temp_tmin + temp_tmax) / 2
+				  # my_day <- data.frame(WYEAR = temp_wyear, # do.call("c", lapply(obs.hist.daily$DAILY, function(x) {rep(x@year, max(x@data[,"DOY"]) ) })),
+				  #                      MONTH = format(temp_date, "%m"),
+				  #                      DATE  = mydate,     #  do.call("c", lapply(obs.hist.daily$DAILY, function(x)  as.Date(x@data[,'DOY'] -1 , origin = paste(x@year, "01","01", sep = "-")))),
+				  #                      PRCP  = do.call("c", lapply(obs.hist.daily$DAILY, function(x)  x@data[,'PPT_cm'])),
+				  #                      TEMP  = temp_t,
+				  #                      TMIN  = temp_tmin,
+				  #                      TMAX  = temp_tmax,
+				  #                      WIND  = NA)
+				  day_data <- dbW_weatherData_to_dataframe(obs.hist.daily)
+				  # get water years
+				  day_data <- day_data[min(which(as.numeric(format(day_data$DATE, "%d")) == 1 & as.numeric(format(day_data$DATE, "%m" ))==10)):max(which(as.numeric(format(day_data$DATE, "%d")) == 30 & as.numeric(format(day_data$DATE, "%m" ))==9)),]
 				  
-				  climwyear <- group_by(my_day, WYEAR=wyear(DATE)) %>%
+				  colnames(day_data) <- c("WYEAR","MONTH","DATE","PRCP","TEMP","TMIN","TMAX","WIND")
+				  
+				  climwyear <- group_by(day_data, WYEAR=wyear(DATE)) %>%
 				    summarise(N=n(),
 				              PRCP=sum(PRCP),
 				              TMAX=mean(TMAX),
 				              TMIN=mean(TMIN),
 				              TEMP=mean(TEMP))                        
 				  complete_years <- climwyear$WYEAR[which(climwyear$N>=365)] 
+				  
 				  wyear_list <- list(temp_wyear)
-				  my_wyr <- data.frame(WYEAR = complete_years,
-				                       PRCP  =  climwyear$PRCP[which(climwyear$N>=365)],  #aggregate(my_day$PRCP, by=wyear_list, FUN=sum)[,2],
-				                       TEMP  =  climwyear$TEMP[which(climwyear$N>=365)],  #aggregate(my_day$TEMP, FUN=mean,by=wyear_list)[,2],
-				                       TMIN  =  climwyear$TMIN[which(climwyear$N>=365)],  #aggregate( my_day$TMIN,FUN=mean,by=wyear_list)[,2] ,
-				                       TMAX  =  climwyear$TMAX[which(climwyear$N>=365)],  #aggregate( my_day$TMAX,FUN=mean,by=wyear_list)[,2],
-				                       WIND  =  NA                                        #aggregate( my_day$WIND,FUN=mean,by=wyear_list)[,2]
+				  wyr_data <- data.frame(WYEAR = complete_years,
+				                         PRCP  =  climwyear$PRCP[which(climwyear$N>=365)],  #aggregate(my_day$PRCP, by=wyear_list, FUN=sum)[,2],
+				                         TEMP  =  climwyear$TEMP[which(climwyear$N>=365)],  #aggregate(my_day$TEMP, FUN=mean,by=wyear_list)[,2],
+				                         TMIN  =  climwyear$TMIN[which(climwyear$N>=365)],  #aggregate( my_day$TMIN,FUN=mean,by=wyear_list)[,2] ,
+				                         TMAX  =  climwyear$TMAX[which(climwyear$N>=365)],  #aggregate( my_day$TMAX,FUN=mean,by=wyear_list)[,2],
+				                         WIND  =  NA                                        #aggregate( my_day$WIND,FUN=mean,by=wyear_list)[,2]
 				  )				  
 				  
-				  my_obs_dat <- list(day=my_day, wyr=my_wyr)
+				  obs_dat <- list(day=day_data, wyr=wyr_data)
 				  
-				  my_zoo_day <- zoo(x = my_obs_dat[['day']][, c('PRCP', 'TEMP', 'TMIN', 'TMAX', 'WIND')],
-				                    order.by = my_obs_dat[['day']][['DATE']])
+				  zoo_day <- zoo(x = obs_dat[['day']][, c('PRCP', 'TEMP', 'TMIN', 'TMAX', 'WIND')],
+				                     order.by = obs_dat[['day']][['DATE']])
 				  # consider setting more values
-				  # weathergens knn_annual may be worth a check, when testing I got surprisingly many leapyears back (40 - 55%). But maybe just coincidence
-				  temp.fut.daily <- weathergen::wgen_daily(my_zoo_day, 
+				  # weathergens knn_annual may be worth a check, when testing I got surprisingly many leapyears. But maybe just coincidence
+				  scen.fut.daily <- weathergen::wgen_daily(zoo_day, 
 				                                           n_year= future_yrs[it, "DSfut_endyr"] - future_yrs[it, "DSfut_startyr"],
 				                                           start_water_year = future_yrs[it, "DSfut_startyr"],
-				                                           start_month = start_month,
+				                                           start_month = 10,
 				                                           include_leap_days = FALSE)
-				  
-
 				  
 				  if (inherits(scen.fut.daily, "try-error")) {#delta-hybrid-3mod unsuccessful, replace with delta method
 				    scen.fut.daily <- downscale.delta(obs.hist.daily, obs.hist.monthly, scen.hist.monthly, scen.fut.monthly,
@@ -2121,6 +2123,9 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 				                                      do_checks = FALSE)
 				    stopifnot(!inherits(scen.fut.daily, "try-error"))
 				    print(paste0(i, ", site_id = ", site_id, ", scenario_id = ", scenario_id, ", ", tolower(paste(tag, gcm, sep=".")), ", timeslice = ", rownames(future_yrs)[it], ": delta-hybrid-3mod replaced by delta method for monthly->daily"))
+				  
+				  } else {  
+				    scen.fut.daily <- dbW_dataframe_to_weatherData(scen.fut.daily, unique(scen.fut.daily$WYEAR))
 				  }
 				  
 				  
