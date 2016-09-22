@@ -2120,9 +2120,6 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 				                               Tmin_C = scen.fut.daily$out$TMIN,
 				                               PPT_cm = scen.fut.daily$out$PRCP)
 
-				  # year start back to 1/1
-				  scen.fut.daily<- scen.fut.daily[min(which(scen.fut.daily$DOY == 1)):max(which(scen.fut.daily$DOY >= 365)), ]
-
 				  if (inherits(scen.fut.daily, "try-error")) {
 				    scen.fut.daily <- downscale.delta(obs.hist.daily, obs.hist.monthly, scen.hist.monthly, scen.fut.monthly,
 				                                      years = sim_years,
@@ -2135,6 +2132,8 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 				    print(paste0(i, ", site_id = ", site_id, ", scenario_id = ", scenario_id, ", ", tolower(paste(tag, gcm, sep=".")), ", timeslice = ", rownames(future_yrs)[it], ": delta-hybrid-3mod replaced by delta method for monthly->daily"))
 				  
 				  } else {  
+				    # year start back to 1/1
+				    scen.fut.daily<- scen.fut.daily[min(which(scen.fut.daily$DOY == 1)):max(which(scen.fut.daily$DOY >= 365)), ]				    
 				    scen.fut.daily <- dbW_dataframe_to_weatherData(scen.fut.daily, round=FALSE)
 				  }
 				   
