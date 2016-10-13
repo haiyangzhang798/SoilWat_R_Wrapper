@@ -1,4 +1,5 @@
 #' @author Zachary Kramer, \email{zbk3@nau.edu}
+# TODO: Determine if STATSGO needs to be flagged conditionally, since the extraction appears to already check for NA data
 
 library(FedData)  # For downloading and extracting SSURGO data
 library(plyr)
@@ -30,6 +31,7 @@ download_and_extract_ssurgo <- function() {
     site <- convert_coords_to_bounding_box(lat, lon)
     # Get the NRCS SSURGO data (USA ONLY) ---------------------
     cat(paste("Site", i, "of", nrow(coordinates)))  # Example: Site 1 of 2
+    cat("\n    > Downloading SSURGO data...")
     soil_data <- tryCatch( {
       get_ssurgo(template = site, label = paste("SOILDATA-", lat, "-", lon, sep=""))
     },
@@ -51,6 +53,7 @@ download_and_extract_ssurgo <- function() {
     #----------------------------------------------------------
     # Check if FedData was able to download and extract the files
     if (is.not.null(soil_data)) {
+      cat("\n    > Choosing keys...")
       # Get the mukey, cokey, and chkeys ----------------------
       keys <- tryCatch( {
         choose_keys(soil_data)
@@ -70,12 +73,14 @@ download_and_extract_ssurgo <- function() {
       )
       #---------------------------------------------------------
       # Extract only the needed fields
-      cat("\n\nExtracting needed data from CSV's...\n")
+      cat("\n    > Extracting needed data from CSV's...")
       extracted_soil_data <- extract_and_format_soil_data(soil_data, keys)
       extracted_soil_data <- convert_units(extracted_soil_data)
       # Populate our csv files
+      cat("\n    > Writing to CSV's...")
       populate_csv_files(extracted_soil_data)
-      sw_input_soils_use["Label"] <- "UseInformationToCreateSoilWatRuns"
+      #sw_input_soils_use["Label"] <- "UseInformationToCreateSoilWatRuns"
+      cat("\n    > Done!\n\n")
     }
   }
 }
@@ -278,7 +283,15 @@ populate_csv_files <- function(formatted_data, site = "test") {
   }
   
   update_input_use <- function(column, value) {
-    if (is.not.na(value)) sw_input_soils_use[column] <- TRUE
+    if (is.not.na(value)) {
+      sw_input_soils_use[column] <<- TRUE
+    }
+  }
+  
+  update_soil_texture <- function(row, column, value) {
+    if (is.not.na(value)) {
+      sw_input_soils[row, column] <<- value
+    }
   }
   
   # Extract data for clarty and ease of use
@@ -296,8 +309,13 @@ populate_csv_files <- function(formatted_data, site = "test") {
   # Insert site names
   soil[nrow(soil) + 1, "Label"]               <- site
   soil_layers[nrow(soil_layers) + 1, "Label"] <- site
+  # (Global variables)
+  sw_input_soils[nrow(sw_input_soils), "Label"]               <<- site
+  sw_input_soillayers[nrow(sw_input_soillayers) + 1, "Label"] <<- site  # First modification has to be at the (0 + 1) row, all other mods must be at current (1st) row
+  
   # Insert one-time data fields
-  soil_layers[nrow(soil_layers), "SoilDepth_cm"] <- brockdepmin
+  soil_layers[nrow(soil_layers), "SoilDepth_cm"] <- hzdepb[length(hzdepb)]  # Store the deepest layer's depth as the max. For some reason, brockdepmin is not a true representation
+  sw_input_soillayers[nrow(sw_input_soillayers), "SoilDepth_cm"] <<- hzdepb[length(hzdepb)]
   # Insert incremented fields
   for (j in 1:length(hzdepb)) {
     # Don't record any information if the following fields are empty (because other data is likely also incomplete)
@@ -305,19 +323,20 @@ populate_csv_files <- function(formatted_data, site = "test") {
       failures <- failures + 1
       next
     }
-    # Fill in sand, clay, and matrix data
+    # Fill CSV in with sand, clay, and matrix data
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$sand, j, sep = ""),   row = nrow(soil), value = sand[j])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$clay, j, sep = ""),   row = nrow(soil), value = clay[j])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$matrix, j, sep = ""), row = nrow(soil), value = dbthirdbar[j])
-    sw_input_soils[nrow(soil), paste(column_names$sand, j, sep="")] <-sand[j]
-    sw_input_soils[nrow(soil), paste(column_names$clay, j, sep="")] <-clay[j]
-    sw_input_soils[nrow(soil), paste(column_names$dbthirdbar, j, sep="")] <-dbthirdbar[j]
     # Fill in horizon depth
     soil_layers[nrow(soil_layers), paste(column_names$depth, j, sep = "")] <- hzdepb[j]
     # Update global variables
     update_input_use(paste(column_names$sand, j, sep = ""), sand[j])
     update_input_use(paste(column_names$clay, j, sep = ""), clay[j])
     update_input_use(paste(column_names$matrix, j, sep = ""), dbthirdbar[j])
+    update_soil_texture(1, paste(column_names$sand, j, sep=""), sand[j])
+    update_soil_texture(1, paste(column_names$clay, j, sep=""), clay[j])
+    update_soil_texture(1, paste(column_names$matrix, j, sep=""), dbthirdbar[j])  
+    sw_input_soillayers[nrow(sw_input_soillayers), paste(column_names$depth, j, sep="")] <<- hzdepb[j]  # Set the depth for this layer
   }
   if(failures == length(hzdepb)) {  # All layers failed
     flag_statsgo()
