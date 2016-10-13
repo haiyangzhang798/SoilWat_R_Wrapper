@@ -813,7 +813,7 @@ if(!be.quiet) print(paste("SWSF sets up the database: started at", t1 <- Sys.tim
 name.OutputDB <- file.path(dir.out, "dbTables.sqlite3")
 if(copyCurrentConditionsFromDatabase | copyCurrentConditionsFromTempSQL) name.OutputDBCurrent <- file.path(dir.out, "dbTables_current.sqlite3")
 setwd(dir.prj)
-source(file.path(dir.code, "2_SWSF_p2of5_CreateDB_Tables_v51.R"), verbose = FALSE, chdir = FALSE)
+source(file.path(dir.code, "R", "2_SWSF_p2of5_CreateDB_Tables_v51.R"), verbose = FALSE, chdir = FALSE)
 
 con <- DBI::dbConnect(RSQLite::SQLite(), dbname=name.OutputDB)
 
@@ -858,7 +858,7 @@ if(any(actions == "external") && any(exinfo[!grepl("GriddedDailyWeather", names(
 	if(!be.quiet) print(paste("SWSF extracts information from external datasets prior to simulation runs: started at", t1 <- Sys.time()))
 	stopifnot(file.exists(dir.external))
 
-	source(file.path(dir.code, "2_SWSF_p3of5_ExternalDataExtractions_v51.R"), verbose = FALSE, chdir = FALSE)
+	source(file.path(dir.code, "R", "2_SWSF_p3of5_ExternalDataExtractions_v51.R"), verbose = FALSE, chdir = FALSE)
   do_check_include <- TRUE
 
 	if(!be.quiet) print(paste("SWSF extracts information from external datasets prior to simulation runs: ended after",  round(difftime(Sys.time(), t1, units="secs"), 2), "s"))
@@ -1374,9 +1374,9 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
       op_prev <- options("warn")
       options(warn = 0)
       env_tosave <- new.env()
-      list2env(as.list(environment()), envir = env_tosave)
-      list2env(as.list(parent.frame()), envir = env_tosave)
       list2env(as.list(.GlobalEnv), envir = env_tosave)
+      list2env(as.list(parent.frame()), envir = env_tosave)
+      list2env(as.list(environment()), envir = env_tosave)
       save(list = ls(envir = env_tosave), envir = env_tosave,
           file = file.path(dir.prj, paste0("last.dump.do_OneSite_", i_sim, ".RData")))
       options(op_prev)
@@ -1465,7 +1465,8 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 		if(!any(create_treatments=="soilsin") & tasks$create == 1L) {
 			soildepth <- i_sw_input_soillayers$SoilDepth_cm
 			layers_depth <- na.omit(as.numeric(i_sw_input_soillayers[2 + lmax]))
-			if(!(length(d <- which(soildepth == layers_depth)) > 0)){	#soildepth is one of the lower layer boundaries
+			d <- which(soildepth == layers_depth)
+			if (length(d) == 0) {	#soildepth is one of the lower layer boundaries
 				d <- min(length(layers_depth), findInterval(soildepth, layers_depth)+1)	#soildepth is not one of the lower layer boundaries, the next deeper layer boundary is used
 			}
 		} else {# needs to be read from soilsin file
@@ -1878,6 +1879,10 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
       # Calculate soil layer structure, because any(create_treatments=="soilsin") and soilsin may have a different soil layer structure than the datafiles
       temp <- as.numeric(na.omit(unlist(i_sw_input_soillayers[paste0("depth_L", seq_len(SoilLayer_MaxNo))])))
       layers_depth.datafile <- temp[temp <= as.numeric(i_sw_input_soillayers["SoilDepth_cm"])]
+      if (length(layers_depth.datafile) == 0) {
+        # this condition arises if i_sw_input_soillayers["SoilDepth_cm"] < i_sw_input_soillayers["depth_L1"]
+        layers_depth.datafile <- temp[1]
+      }
 
       if (!identical(layers_depth.datafile, soil_swdat[, "depth_cm"])) {
         # different soil layer structure in soilsin and datafile AND since variables are flagged in sw_input_soils_use => use only datafile values
@@ -1951,7 +1956,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
       # Impute missing/bad soil data from previous layer
       icol_excl <- which(soil_cols %in% "soilTemp_c")
       icols <- seq_along(soil_cols)[-icol_excl]
-      bad_data <- !check_soil_data(soildat[, -icol_excl])
+      bad_data <- !check_soil_data(soildat[, -icol_excl, drop = FALSE])
 
       if (any(bad_data)) for (l in ld) {
         lbad <- bad_data[l, ]
@@ -1989,10 +1994,9 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 
     EVCO_done <- sum(soil_swdat[, "EvapBareSoil_frac"]) > 0
     TRCO_done <- all(colSums(soil_swdat[, c("transpGrass_frac", "transpShrub_frac",
-                                            "transpTree_frac", "transpForb_frac")]) > 0)
+                                            "transpTree_frac", "transpForb_frac"), drop = FALSE]) > 0)
 
     swSoils_Layers(swRunScenariosData[[1]]) <- soil_swdat
-
 
 		#add transpiration regions information to siteparamin
 		if(print.debug) print("Start of transpregion")
@@ -2332,7 +2336,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 			#adjust init soil temperatures to climatic conditions
 			use_soil_temp <- sw_input_soils_use[paste0("SoilTemp_L", ld)]
 			if (any(use_soil_temp)) {
-				temp <- 1:nrow(swSoils_Layers(swRunScenariosData[[sc]]))
+				temp <- seq_len(nrow(swSoils_Layers(swRunScenariosData[[sc]])))
 				if(exists("init.soilTprofile")) {
 					swSoils_Layers(swRunScenariosData[[sc]])[,12][use_soil_temp] <- init.soilTprofile
 				} else {
@@ -2993,7 +2997,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 			#5
 				if(aon$input_TranspirationCoeff){
 					if(print.debug) print("Aggregation of input_TranspirationCoeff")
-					Tcoeff <- swSoils_Layers(swRunScenariosData[[1]])[, 5:8]
+					Tcoeff <- swSoils_Layers(swRunScenariosData[[1]])[, 5:8, drop = FALSE]
 					if(is.null(dim(Tcoeff))) Tcoeff <- matrix(Tcoeff, nrow=1)
 
 					TaggLs <- sapply(aggLs, FUN=function(l) apply(Tcoeff[l,, drop=FALSE], 2, sum))
@@ -3497,60 +3501,99 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 					if(!exists("Esoil.dy.all")) Esoil.dy.all <- get_Response_aggL(sc, sw_evsoil, tscale = "dyAll", scaler = 10, FUN = sum, x = runData, st = simTime, st2 = simTime2, topL = topL, bottomL = bottomL)
 					if(!exists("deepDrain.dy")) deepDrain.dy <- get_DeepDrain_dy(sc, runData, simTime)
 
-					percolation <- 10 * slot(slot(runData[[sc]],sw_percolation), "Day")[simTime$index.usedy, 2 + head(ld, n=-1)]
-					hydred <- 10 * slot(slot(runData[[sc]],sw_hd), "Day")[simTime$index.usedy, 2 + ld]
+          percolation <- if (d > 1) {
+              10 * slot(slot(runData[[sc]],sw_percolation), "Day")[simTime$index.usedy, 2 + ld[-d]]
+            } else {
+              rep(0, simTime$no.usedy)
+            }
+          hydred <- 10 * slot(slot(runData[[sc]],sw_hd), "Day")[simTime$index.usedy, 2 + ld]
 
 					# Water balance
-					outputs_by_layer <- inputs_by_layer <- matrix(0, nrow=length(simTime$index.usedy), ncol=length(ld))
+					outputs_by_layer <- inputs_by_layer <- matrix(0, nrow = simTime$no.usedy, ncol = d,
+					  dimnames = list(NULL, paste0("total_Lyr_", ld)))
 					# Inputs: infiltration + received hydraulic redistribution + received percolation
 					inputs_by_layer[, 1] <- inputs_by_layer[, 1] + inf.dy$inf
 					inputs_by_layer <- inputs_by_layer + ifelse(hydred > 0, hydred, 0)
-					inputs_by_layer[, -1] <- inputs_by_layer[, -1] + ifelse(percolation > 0, percolation, 0)
+          if (d > 1) {
+            inputs_by_layer[, -1] <- inputs_by_layer[, -1] + ifelse(percolation > 0, percolation, 0)
+          }
 
 					# Outputs: soil evaporation + transpiration + deep drainage + hydraulic redistribution donor + percolation donor
-					itemp <- 1:(ncol(Esoil.dy.all$val) - 2)
-					outputs_by_layer[, itemp] <- outputs_by_layer[, itemp] + Esoil.dy.all$val[simTime$index.usedy, -(1:2)]
-					itemp <- grepl("transp_total", colnames(transp.dy.all$val))
-					outputs_by_layer[, 1:sum(itemp)] <- outputs_by_layer[, 1:sum(itemp)] + transp.dy.all$val[simTime$index.usedy, itemp]
-					itemp <- ncol(outputs_by_layer)
-					outputs_by_layer[, itemp] <- outputs_by_layer[, itemp] + deepDrain.dy$val
-					outputs_by_layer[, -itemp] <- outputs_by_layer[, -itemp] + ifelse(percolation < 0, -percolation, 0)
-					outputs_by_layer <- outputs_by_layer + ifelse(hydred < 0, -hydred, 0)
+          if (ncol(Esoil.dy.all$val) > 2) {
+            itemp <- seq_len(ncol(Esoil.dy.all$val) - 2)
+            outputs_by_layer[, itemp] <- outputs_by_layer[, itemp] +
+              Esoil.dy.all$val[simTime$index.usedy, -(1:2)]
+          }
+          itemp <- grepl("transp_total", colnames(transp.dy.all$val))
+          if (any(itemp)) {
+            itemp <- seq_len(sum(itemp))
+            outputs_by_layer[, itemp] <- outputs_by_layer[, itemp] +
+              transp.dy.all$val[simTime$index.usedy, itemp]
+          }
+          itemp <- ncol(outputs_by_layer)
+          outputs_by_layer[, itemp] <- outputs_by_layer[, itemp] + deepDrain.dy$val
+          if (itemp > 1) {
+            outputs_by_layer[, -itemp] <- outputs_by_layer[, -itemp] +
+              ifelse(percolation < 0, -percolation, 0)
+          }
+          outputs_by_layer <- outputs_by_layer + ifelse(hydred < 0, -hydred, 0)
 
 					# balance
 					balance <- inputs_by_layer - outputs_by_layer
 					extraction <- balance < 0
 					storage_use <- by(cbind(extraction, outputs_by_layer), INDICES=simTime2$year_ForEachUsedDay_NSadj, FUN=function(x) {
-						res1 <- apply(x[, ld], MARGIN=2, FUN=rle)
-						res2 <- apply(x[, max(ld) + ld], MARGIN=2, FUN=function(y) list(out=y))
-						return(modifyList(res1, res2))})
+            res1 <- apply(x[, ld, drop = FALSE], MARGIN=2, FUN=rle)
+            res2 <- apply(x[, soilLayers_N + ld, drop = FALSE], MARGIN=2, FUN=function(y) list(out=y))
+            modifyList(res1, res2)
+          }, simplify = FALSE)
 
 					# median duration among extracting spells for each layer and each year
-					extraction_duration_days <- sapply(storage_use, FUN=function(x) sapply(x, FUN=function(dat) mean(dat$lengths[as.logical(dat$values)])))
+          extraction_duration_days <- sapply(storage_use, function(x)
+              sapply(x, function(dat) {
+                if (is.null(dat$out) || is.null(dat$values)) {
+                  NA
+                } else {
+                  temp <- as.logical(dat$values)
+                  if (any(temp)) mean(dat$lengths[as.logical(dat$values)]) else NA
+                }
+              }))
+          if (!is.matrix(extraction_duration_days)) {
+            extraction_duration_days <- matrix(extraction_duration_days, nrow = d, ncol = simTime$no.useyr)
+          }
 
 					# median annual sum of all extracted water during extracting spells for each layer and each year
-					extraction_summed_mm <- sapply(storage_use, FUN=function(x) sapply(x, FUN=function(dat) {
-							dat$values <- as.logical(dat$values)
-							temp <- dat
-							if(any(dat$values)) temp$values[dat$values] <- 1:sum(dat$values) # give unique ID to each extraction spell
-							if(any(!dat$values)){
-								temp$values[!dat$values] <- 0 # we are not interested in positive spells
-								has_zero <- TRUE
-							} else {
-								has_zero <- FALSE
-							}
-							storage_ids <- inverse.rle(temp)
-							x <- tapply(dat$out, INDEX=storage_ids, sum) # sum up extracted water for each extraction spell
-							if(has_zero && length(x) > 0) x <- x[-1] # remove first element because this represents the positive spells (id = 0)
-							return(sum(x))
+					extraction_summed_mm <- sapply(storage_use, function(x) sapply(x, function(dat) {
+              if (is.null(dat$out) || is.null(dat$values)) {
+                NA
+              } else {
+                dat$values <- as.logical(dat$values)
+                temp <- dat
+                if (any(dat$values))
+                  temp$values[dat$values] <- seq_len(sum(dat$values)) # give unique ID to each extraction spell
+                if (any(!dat$values)) {
+                  temp$values[!dat$values] <- 0 # we are not interested in positive spells
+                  has_zero <- TRUE
+                } else {
+                  has_zero <- FALSE
+                }
+                storage_ids <- inverse.rle(temp)
+                x <- tapply(dat$out, INDEX=storage_ids, sum) # sum up extracted water for each extraction spell
+                if (has_zero && length(x) > 0)
+                  x <- x[-1] # remove first element because this represents the positive spells (id = 0)
+
+                sum(x)
+              }
 						}))
+          if (!is.matrix(extraction_summed_mm)) {
+            extraction_summed_mm <- matrix(extraction_summed_mm, nrow = d, ncol = simTime$no.useyr)
+          }
 
 					# aggregate across years for each soil layer
-					resMeans[nv:(nv+max(ld)-1)] <- round(apply(extraction_duration_days, 1, mean), 1)
-					resSDs[nv:(nv+max(ld)-1)] <- round(apply(extraction_duration_days, 1, sd), 1)
+					resMeans[nv:(nv+soilLayers_N-1)] <- round(apply(extraction_duration_days, 1, mean), 1)
+					resSDs[nv:(nv+soilLayers_N-1)] <- round(apply(extraction_duration_days, 1, sd), 1)
 					nv <- nv+SoilLayer_MaxNo
-					resMeans[nv:(nv+max(ld)-1)] <- round(apply(extraction_summed_mm, 1, mean), 2)
-					resSDs[nv:(nv+max(ld)-1)] <- round(apply(extraction_summed_mm, 1, sd), 2)
+					resMeans[nv:(nv+soilLayers_N-1)] <- round(apply(extraction_summed_mm, 1, mean), 2)
+					resSDs[nv:(nv+soilLayers_N-1)] <- round(apply(extraction_summed_mm, 1, sd), 2)
 					nv <- nv+SoilLayer_MaxNo
 
 					rm(percolation, hydred, inputs_by_layer, outputs_by_layer, balance, extraction, storage_use, extraction_duration_days, extraction_summed_mm)
@@ -3736,7 +3779,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 
           MCS_depth <- Lanh_depth <- rep(NA, 2)
           Fifty_depth <- permafrost <- CSPartSummer <- NA
-          MATLanh <- MAT50 <- T50jja <- T50djf <- CSPartSummer <- NA
+          MATLanh <- MAT50 <- T50jja <- T50djf <- NA
           Lanh_annual_means <- rep(NA, 3)
           Cond_annual_means <- rep(NA, 17)
 
@@ -3758,7 +3801,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
               impermeability <- 0.9 #impermeable layer
 
               #Required soil layers
-              soildat <- swSoils_Layers(swRunScenariosData[[sc]])[, c("depth_cm", "sand", "clay", "imperm")]
+              soildat <- swSoils_Layers(swRunScenariosData[[sc]])[, c("depth_cm", "sand", "clay", "imperm"), drop = FALSE]
               #50cm soil depth or impermeable layer (whichever is shallower; Soil Survey Staff 2014: p.31)
               imp_depth <- which(soildat[, "imperm"] >= impermeability)
               imp_depth <- min(imp_depth, max(soildat[, "depth_cm"]))	#Interpret maximum soil depth as possible impermeable layer
@@ -3854,7 +3897,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
               }
 
               soiltemp_nrsc <- lapply(soiltemp_nrsc, function(st) st[["data"]])
-              swp_dy_nrsc <- swp_dy_nrsc$val[simTime$index.usedy, -(1:2)]
+              swp_dy_nrsc <- swp_dy_nrsc$val[simTime$index.usedy, -(1:2), drop = FALSE]
 
               #MCS (Soil Survey Staff 2014: p.29)
               #What soil layer info used for MCS
@@ -3883,7 +3926,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
               #CSPartSummer: Is the soil saturated with water during some part of the summer June1 (=regular doy 244) - Aug31 (=regular doy 335)
               isummer <- simTime2$doy_ForEachUsedDay_NSadj >= 244 & simTime2$doy_ForEachUsedDay_NSadj <= 335
               CSPartSummer <- mean(vapply(wyears, function(yr) {
-                temp <- apply(swp_dy_nrsc[wateryears == yr & isummer, ], 1,
+                temp <- apply(swp_dy_nrsc[wateryears == yr & isummer, , drop = FALSE], 1,
                   function(x) all(x >= SWP_sat))
                 rtemp <- rle(temp)
                 if(any(rtemp$values)) max(rtemp$lengths[rtemp$values]) else 0
@@ -4098,15 +4141,32 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 
                 regimes_done <- TRUE
 
+                to_del <- c("n_Lanh", "width_Lanh", "Lanh_Dry_Half", "LanhConditionalDF",
+                  "LanhConditionalDF3", "ConditionalDF", "ConditionalDF3")
+                to_del <- to_del[to_del %in% ls()]
+                if (length(to_del) > 0)
+                  try(rm(list = to_del), silent = TRUE)
+
               } else {
                 if (!be.quiet)
-                  print(paste(i_label, "Number of normal years not long enough to calculate NRCS Soil Moisture Regimes. Try increasing length of simulation"))
-                Tregime[] <- Sregime[] <- NA
+                  print(paste(i_label, "Number of normal years not long enough to calculate NRCS soil moisture regimes. Try increasing length of simulation"))
+
+                Sregime[] <- NA
+
+                to_del <- c("calc50", "calcLanh", "calcMCS", "clay_temp", "days_per_wyear",
+                  "i_depth50", "i_Lanh", "i_MCS", "imp_depth", "impermeability",
+                  "isummer", "Lanh_depth", "MAP", "MMP", "normal1", "normal2",
+                  "sand_temp", "soildat", "soiltemp_nrsc", "SWP_dry", "swp_dy_nrsc",
+                  "SWP_sat", "T50", "vwc_dy_nrsc", "wateryears", "wdays_index",
+                  "wyears", "wyears_index", "wyears_normal")
+                to_del <- to_del[to_del %in% ls()]
+                if (length(to_del) > 0)
+                  try(rm(list = to_del), silent = TRUE)
               }
 
             } else {
               if (!be.quiet)
-                print(paste(i_label, "has unrealistic soil temperature values."))
+                print(paste(i_label, "has unrealistic soil temperature values: NRCS soil moisture/temperature regimes not calculated."))
                 Tregime[] <- Sregime[] <- NA
             }
 
@@ -4125,16 +4185,9 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
           nv <- nv_new
 
 
-          to_del <- c("Lanh_annual_means", "Cond_annual_means", "calc50", "calcLanh",
-            "calcMCS", "clay_temp", "ConditionalDF", "ConditionalDF3", "CSPartSummer",
-            "days_per_wyear",  "Fifty_depth", "i_depth50", "i_Lanh", "i_MCS", "imp_depth",
-            "impermeability", "isummer", "Lanh_depth", "Lanh_Dry_Half",
-            "LanhConditionalDF", "LanhConditionalDF3", "MAP", "MAT50", "MATLanh",
-            "MCS_depth", "MMP", "n_Lanh", "normal1", "normal2", "permafrost", "sand_temp",
-            "soildat", "soiltemp_nrsc", "SWP_dry", "swp_dy_nrsc", "SWP_sat", "T50",
-            "T50djf", "T50jja", "vwc_dy_nrsc", "wateryears", "wdays_index",
-            "width_Lanh", "wyears", "wyears_index", "wyears_normal")
-          # to_del <- to_del[to_del %in% ls()]
+          to_del <- c("MCS_depth", "Fifty_depth", "permafrost", "CSPartSummer", "MATLanh",
+            "MAT50", "T50jja", "T50djf", "Lanh_annual_means", "Cond_annual_means")
+          to_del <- to_del[to_del %in% ls()]
           if (length(to_del) > 0)
             try(rm(list = to_del), silent = TRUE)
         }
@@ -5011,7 +5064,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 					temp.temp <- slot(slot(runData[[sc]],sw_temp),"Day")
 					TmeanJan <- mean(temp.temp[simTime$index.usedy, 5][simTime2$month_ForEachUsedDay_NSadj==1], na.rm=TRUE)	#mean January (N-hemisphere)/July (S-hemisphere) air temperature based on normal 'doy'
 					temp.soiltemp <- slot(slot(runData[[sc]],sw_soiltemp),"Day")
-					if(inherits(temp.soiltemp, "try-error") || any(is.na(temp.soiltemp[, -(1:2)])) || all(temp.soiltemp[, -(1:2)] == 0)){
+					if(inherits(temp.soiltemp, "try-error") || anyNA(temp.soiltemp[, -(1:2)]) || all(temp.soiltemp[, -(1:2)] == 0)){
 						use.soiltemp <- FALSE	#flag whether soil temperature output is available or not (and then air temperature is used instead of top soil temperature)
 					} else {
 						use.soiltemp <- TRUE	#currently we have only mean daily soil temperatures and not min/max which we need fo the model
@@ -5067,9 +5120,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 
 						#Access daily data, the first time and afterwards only if Doy_SeedDispersalStart is different from value of previous species
 						if (sp == 1 || Doy_SeedDispersalStart != prev.Doy_SeedDispersalStart) {
-							swp <- swpmatric.dy.all$val[RY.index.usedy, 2 + ld]
-							if (length(ld) == 1)
-							  swp <- matrix(swp, ncol = 1)
+							swp <- swpmatric.dy.all$val[RY.index.usedy, 2 + ld, drop = FALSE]
 							snow <- temp.snow[RY.index.usedy, 3]*10 #mm swe in snowpack
 							airTminSnow <- ifelse(snow > 0, param$Temp_ExperiencedUnderneathSnowcover, temp.temp[RY.index.usedy, 4])
 							airTmax <- temp.temp[RY.index.usedy, 3]
@@ -5126,27 +5177,17 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 
 						#---3. Successful germinations
 						GerminationSuccess_Initiated <- !is.na(Germination_TimeToGerminate)
-						temp <- padded <- rep(FALSE, RY_N_usedy)
 						germ.starts <- which(GerminationSuccess_Initiated)
 						germ.durs <- Germination_TimeToGerminate[germ.starts] - 1
 						if (param$GerminationPeriods_0ResetOr1Resume == 1) {
-							temp.wait <- na.exclude(unlist(lapply(seq_len(RY_N_usedy), function(t) {
-														if (is.finite(Germination_TimeToGerminate[t])) {
-														  t1 <- LengthDays_FavorableConditions[t:RY_N_usedy]
-														  t2 <- na.exclude(t1)
-															t3 <- which(t2[Germination_TimeToGerminate[t]] == t1)[1]
-															sum(is.na(t1[1:t3]))
-														} else {
-															NA
-														}
-													})))
-							germ.durs <- germ.durs + temp.wait
+              germ.durs <- germ.durs + germination_wait_times(Germination_TimeToGerminate,
+                LengthDays_FavorableConditions)
 						}
 						emergence.doys <- germ.starts + germ.durs #index of start of successful germinations + time to germinate (including wait time during unfavorable conditions if 'resume')
-						temp[emergence.doys] <- TRUE
-						padded[!GerminationSuccess_Initiated] <- NA
-						Germination_Emergence.doys <- napredict(na.action(na.exclude(padded)), emergence.doys)
-						Germination_Emergence <- temp
+						Germination_Emergence <- rep(FALSE, RY_N_usedy)
+						Germination_Emergence[emergence.doys] <- TRUE
+						Germination_Emergence.doys <- rep(NA, RY_N_usedy)
+						Germination_Emergence.doys[GerminationSuccess_Initiated] <- emergence.doys
 
 
 						#----SEEDLING SURVIVAL
@@ -5167,6 +5208,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 
 						#---2. Grow and kill the seedlings
 						SeedlingSurvival_1stSeason <- Seedling_Starts <- Germination_Emergence #TRUE=seedling that germinated on that day and survives until end of season; FALSE=no germination or seedling dies during the first season
+						SeedlingSurvival_1stSeason[] <- SeedlingSurvival_1stSeason # deep copy because Rcpp-version of get_KilledBySoilLayers changes in place which has otherwise side effects on Seedling_Starts and Germination_Emergence
 						SeedlingMortality_CausesByYear <- matrix(0, nrow = length(RY.useyrs), ncol = 9)
 						colnames(SeedlingMortality_CausesByYear) <- paste0("Seedlings1stSeason.Mortality.", c("UnderneathSnowCover", "ByTmin", "ByTmax", "ByChronicSWPMax", "ByChronicSWPMin", "ByAcuteSWPMin",
 										"DuringStoppedGrowth.DueSnowCover", "DuringStoppedGrowth.DueTmin", "DuringStoppedGrowth.DueTmax"))
@@ -5179,9 +5221,9 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 								thisYear_SeedlingMortality_UnderneathSnowCover <- SeedlingMortality_UnderneathSnowCover[index.thisYear]
 								thisYear_SeedlingMortality_ByTmin <- SeedlingMortality_ByTmin[index.thisYear]
 								thisYear_SeedlingMortality_ByTmax <- SeedlingMortality_ByTmax[index.thisYear]
-								thisYear_SeedlingMortality_ByChronicSWPMax <- SeedlingMortality_ByChronicSWPMax[index.thisYear, ]
-								thisYear_SeedlingMortality_ByChronicSWPMin <- SeedlingMortality_ByChronicSWPMin[index.thisYear, ]
-								thisYear_SeedlingMortality_ByAcuteSWPMin <- SeedlingMortality_ByAcuteSWPMin[index.thisYear, ]
+								thisYear_SeedlingMortality_ByChronicSWPMax <- SeedlingMortality_ByChronicSWPMax[index.thisYear, , drop = FALSE]
+								thisYear_SeedlingMortality_ByChronicSWPMin <- SeedlingMortality_ByChronicSWPMin[index.thisYear, , drop = FALSE]
+								thisYear_SeedlingMortality_ByAcuteSWPMin <- SeedlingMortality_ByAcuteSWPMin[index.thisYear, , drop = FALSE]
 								thisYear_SeedlingGrowth_AbsenceOfSnowCover <- SeedlingGrowth_AbsenceOfSnowCover[index.thisYear]
 								thisYear_SeedlingGrowth_AtAboveTmin <- SeedlingGrowth_AtAboveTmin[index.thisYear]
 								thisYear_SeedlingGrowth_AtBelowTmax <- SeedlingGrowth_AtBelowTmax[index.thisYear]
@@ -5267,17 +5309,17 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 										thisSeedling_thisYear_RootingSoilLayers <- SoilLayer_at_SoilDepth(thisSeedling_thisYear_RootingDepth, layers_depth)
 
 										#Check survival under chronic SWPMax
-										thisSeedling_thisYear_SeedlingMortality_ByChronicSWPMax <- get_KilledBySoilLayers(relevantLayers=thisSeedling_thisYear_RootingSoilLayers, kill.conditions=thisYear_SeedlingMortality_ByChronicSWPMax)
+										thisSeedling_thisYear_SeedlingMortality_ByChronicSWPMax <- get_KilledBySoilLayers(thisSeedling_thisYear_RootingSoilLayers, thisYear_SeedlingMortality_ByChronicSWPMax)
 										temp <- thisSeedling_thisYear_SeedlingMortality_ByChronicSWPMax[index.thisSeedlingSeason]
 										if (any(temp))
 										  killed_byCauses_onRYdoy["Seedlings1stSeason.Mortality.ByChronicSWPMax"] <- sg_RYdoy + which(temp)[1] - 1
 										#Check survival under chronic SWPMin
-										thisSeedling_thisYear_SeedlingMortality_ByChronicSWPMin <- get_KilledBySoilLayers(relevantLayers=thisSeedling_thisYear_RootingSoilLayers, kill.conditions=thisYear_SeedlingMortality_ByChronicSWPMin)
+										thisSeedling_thisYear_SeedlingMortality_ByChronicSWPMin <- get_KilledBySoilLayers(thisSeedling_thisYear_RootingSoilLayers, thisYear_SeedlingMortality_ByChronicSWPMin)
 										temp <- thisSeedling_thisYear_SeedlingMortality_ByChronicSWPMin[index.thisSeedlingSeason]
 										if (any(temp))
 										  killed_byCauses_onRYdoy["Seedlings1stSeason.Mortality.ByChronicSWPMin"] <- sg_RYdoy + which(temp)[1] - 1
 										#Check survival under acute SWPMin
-										thisSeedling_thisYear_SeedlingMortality_ByAcuteSWPMin <- get_KilledBySoilLayers(relevantLayers=thisSeedling_thisYear_RootingSoilLayers, kill.conditions=thisYear_SeedlingMortality_ByAcuteSWPMin)
+										thisSeedling_thisYear_SeedlingMortality_ByAcuteSWPMin <- get_KilledBySoilLayers(thisSeedling_thisYear_RootingSoilLayers, thisYear_SeedlingMortality_ByAcuteSWPMin)
 										temp <- thisSeedling_thisYear_SeedlingMortality_ByAcuteSWPMin[index.thisSeedlingSeason]
 										if (any(temp))
 										  killed_byCauses_onRYdoy["Seedlings1stSeason.Mortality.ByAcuteSWPMin"] <- sg_RYdoy + which(temp)[1] - 1
@@ -5293,7 +5335,9 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 											SeedlingMortality_CausesByYear[y, 6+stop.factor] <- SeedlingMortality_CausesByYear[y, 6+stop.factor] + 1
 										}
 
-										SeedlingSurvival_1stSeason[RYyear_ForEachUsedDay == RY.useyrs[y]][sg_RYdoy] <- FALSE
+                    SeedlingSurvival_1stSeason <- setFALSE_SeedlingSurvival_1stSeason(
+                      SeedlingSurvival_1stSeason, RYyear_ForEachUsedDay,
+                      RY.useyrs, y, sg_RYdoy)
 									}
 								}
 							} else {#no germination during this year -> no seedlings to grow or die
@@ -5665,7 +5709,7 @@ if(actionWithSoilWat && runsN_todo > 0){
     "create_experimentals", "create_treatments", "daily_lyr_agg",
     "daily_no", "datafile.windspeedAtHeightAboveGround", "dbOverallColumns",
     "dbWeatherDataFile", "debug.dump.objects", "DegreeDayBase", "Depth_TopLayers",
-    "dir.ex.daymet", "dir.ex.maurer2002", "dir.out", "dir.out.temp",
+    "dir.code", "dir.ex.daymet", "dir.ex.maurer2002", "dir.out", "dir.out.temp",
     "dir.prj", "dir.sw.in.tr", "dir.sw.runs", "dirname.sw.runs.weather",
     "do_OneSite", "do.GetClimateMeans", "done_prior", "endyr", "estabin",
     "establishment.delay", "establishment.duration", "establishment.swp.surface",
@@ -5694,8 +5738,8 @@ if(actionWithSoilWat && runsN_todo > 0){
     "tr_input_EvapCoeff", "tr_input_shiftedPPT", "tr_input_SnowD",
     "tr_input_TranspCoeff", "tr_input_TranspCoeff_Code", "tr_input_TranspRegions",
     "tr_prod", "tr_site", "tr_soil", "tr_VegetationComposition",
-    "tr_weather", "weatherin", "workersN", "yearsin")
-  list.export <- list.export[!duplicated(list.export)]
+    "tr_weather", "use_rcpp", "weatherin", "workersN", "yearsin")
+  #list.export <- list.export[!duplicated(list.export)]
 
   swsf_env <- new.env(parent = emptyenv())
   load(rSWSF, envir = swsf_env)
@@ -5708,7 +5752,7 @@ if(actionWithSoilWat && runsN_todo > 0){
 
 	#ETA calculation
 	if (!be.quiet)
-	  print(paste("SWSF simulation runs:", runsN_todo, "out of", runsN_total, " runs will be carried out on", workersN, "cores: started at", t1 <- Sys.time()))
+	  print(paste("SWSF simulation runs:", runsN_todo, "out of", runsN_total, "runs will be carried out on", workersN, "cores: started at", t1 <- Sys.time()))
 
 	inputDataToSave <- list()
 
@@ -5721,6 +5765,7 @@ if(actionWithSoilWat && runsN_todo > 0){
 			mpi.bcast.cmd(library(RSQLite, quietly = TRUE))
 
       export_objects_to_workers(list.export, list_envs, "mpi")
+      mpi.bcast.cmd(source(file.path(dir.code, "R", "SWSF_cpp_functions.R")))
       if (print.debug) {
         mpi.bcast.cmd(print(paste("Slave", mpi.comm.rank(), "has", length(ls()), "objects")))
       }
@@ -5825,6 +5870,7 @@ tryCatch({
 			snow::clusterEvalQ(cl, library(RSQLite, quietly = TRUE))
 
       export_objects_to_workers(list.export, list_envs, "snow", cl)
+      snow::clusterEvalQ(cl, source(file.path(dir.code, "R", "SWSF_cpp_functions.R")))
 			snow::clusterEvalQ(cl, Rsoilwat31::dbW_setConnection(dbFilePath = dbWeatherDataFile))
 
 			runs.completed <- foreach(i_sim=runIDs_todo, .combine="+", .inorder=FALSE) %dopar% {
@@ -5838,6 +5884,7 @@ tryCatch({
 		}
 
 		if (identical(parallel_backend, "multicore")) {
+      source(file.path(dir.code, "R", "SWSF_cpp_functions.R"))
 			Rsoilwat31::dbW_setConnection(dbFilePath = dbWeatherDataFile)
 
 			runs.completed <- foreach(i_sim=runIDs_todo, .combine="+", .inorder=FALSE, .noexport=list.noexport) %dopar% {
@@ -5850,6 +5897,7 @@ tryCatch({
 		}
 
 	} else { #call the simulations in serial
+		source(file.path(dir.code, "R", "SWSF_cpp_functions.R"))
 		Rsoilwat31::dbW_setConnection(dbFilePath = dbWeatherDataFile)
 		runs.completed <- 0
 
