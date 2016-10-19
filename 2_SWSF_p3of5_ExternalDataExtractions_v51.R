@@ -2064,7 +2064,7 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 				  require("weathergen")
 				  require("dplyr")
 				  library("lubridate")
-				  scenario_id <- dbW_iScenarioTable[dbW_iScenarioTable[, "Scenario"] == tolower(paste("weathergen", tag, gcm, sep=".")), "id"]     
+				  scenario_id <- dbW_iScenarioTable[dbW_iScenarioTable[, "Scenario"] == tolower(paste("wgen-package", tag, gcm, sep=".")), "id"]     
 
 				  day_data <- dbW_weatherData_to_dataframe(obs.hist.daily)
 				  
@@ -2122,7 +2122,7 @@ if (exinfo$GDODCPUCLLNL || exinfo$ExtractClimateChangeScenarios_CMIP5_BCSD_NEX_U
 				                                      dailyPPTceiling = dailyPPTceiling,
 				                                      do_checks = FALSE)
 				    stopifnot(!inherits(scen.fut.daily, "try-error"))
-				    print(paste0(i, ", site_id = ", site_id, ", scenario_id = ", scenario_id, ", ", tolower(paste(tag, gcm, sep=".")), ", timeslice = ", rownames(future_yrs)[it], ": delta-hybrid-3mod replaced by delta method for monthly->daily"))
+				    print(paste0(i, ", site_id = ", site_id, ", scenario_id = ", scenario_id, ", ", tolower(paste(tag, gcm, sep=".")), ", timeslice = ", rownames(future_yrs)[it], ": wgen-package replaced by delta method for monthly->daily"))
 				  
 				  } else {  
 				    scen.fut.daily <- data.frame(Year   = format(scen.fut.daily$out$DATE,"%Y"),
