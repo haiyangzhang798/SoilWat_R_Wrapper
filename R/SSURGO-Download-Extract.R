@@ -2,7 +2,6 @@
 # TODO: Determine if STATSGO needs to be flagged conditionally, since the extraction appears to already check for NA data
 
 library(FedData)  # For downloading and extracting SSURGO data
-library(plyr)
 
 # Main function --------------
 #' @title Download and extract SSURGO data
@@ -27,26 +26,30 @@ download_and_extract_ssurgo <- function() {
     # Get coordinates
     lat  <- coordinates[i, 2]
     lon  <- coordinates[i, 1]
+    # Get site name
+    label <- SWRunInformation[i, "Label"]
     # Create a spatial polygon object to serve as an area to download
     site <- convert_coords_to_bounding_box(lat, lon)
     # Get the NRCS SSURGO data (USA ONLY) ---------------------
     cat(paste("Site", i, "of", nrow(coordinates)))  # Example: Site 1 of 2
     cat("\n    > Downloading SSURGO data...")
     soil_data <- tryCatch( {
-      get_ssurgo(template = site, label = paste("SOILDATA-", lat, "-", lon, sep=""))
+      get_ssurgo(template = site, label = paste("SOILDATA-", lat, "-", lon, sep=""))  # Download to a folder: "SOILDATA-[LAT]-[LON]"
     },
     error = function(e) { 
-      cat("\nDOWNLOAD ERROR\n--------------\nRaw error:\n")
+      cat("\n\nDOWNLOAD ERROR\n--------------\nRaw error:\n")
       print(e)
       cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep=""))
       cat("This is likely due to SSURGO not supporting the given coordinates, is this a published USA site?\nSkipping site.\n\n")
+      flag_statsgo()
       return(NULL)
     },
     warning = function(w) { 
-      cat("\nDOWNLOAD ERROR\n--------------\nRaw error:\n")
+      cat("\n\nDOWNLOAD ERROR\n--------------\nRaw error:\n")
       print(w)
       cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep=""))
       cat("This is likely due to SSURGO not supporting the given coordinates, is this a published USA site?\nSkipping site.\n\n")
+      flag_statsgo()
       return(NULL)
     }
     )
@@ -59,16 +62,18 @@ download_and_extract_ssurgo <- function() {
         choose_keys(soil_data)
       },
       error = function(e) { 
-        cat("\nEXTRACTION ERROR\n----------------\nRaw error:\n")
+        cat("\n\nEXTRACTION ERROR\n----------------\nRaw error:\n")
         print(e)
         cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep = ""))
         cat("This is likely because the site data is incomplete.\nSkipping site.\n\n")
+        flag_statsgo()
       },
       warning = function(w) { 
-        cat("\nEXTRACTION ERROR\n----------------\nRaw error:\n")
+        cat("\n\nEXTRACTION ERROR\n----------------\nRaw error:\n")
         print(w)
         cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep = ""))
         cat("This is likely because the site data is incomplete.\nSkipping site.\n\n")
+        flag_statsgo()
       }
       )
       #---------------------------------------------------------
@@ -78,8 +83,7 @@ download_and_extract_ssurgo <- function() {
       extracted_soil_data <- convert_units(extracted_soil_data)
       # Populate our csv files
       cat("\n    > Writing to CSV's...")
-      populate_csv_files(extracted_soil_data)
-      #sw_input_soils_use["Label"] <- "UseInformationToCreateSoilWatRuns"
+      populate_csv_files(extracted_soil_data, label)
       cat("\n    > Done!\n\n")
     }
   }
@@ -273,7 +277,7 @@ extract_and_format_soil_data <- function(soil_data, keys) {
 #' @title Populate the CSVs
 #' @description Take the given input data and populate the respective CSV's for the SOILWAT R Wrapper
 #' @param formatted_data see Value of extract_and_format_soil_data
-populate_csv_files <- function(formatted_data, site = "test") {
+populate_csv_files <- function(formatted_data, label) {
   
   # Set the first row to a 1 and the given row to the given value (useful for soils_WISE CSVs)
   flag_and_fill <- function(CSV, column_name, row, value) {
@@ -304,15 +308,19 @@ populate_csv_files <- function(formatted_data, site = "test") {
   column_names <- data.frame(sand="Sand_L", clay="Clay_L", matrix="Matricd_L", depth="depth_L")
   failures     <- 0
   # Read CSV's
-  soil         <- read.csv(file.path(dir.sw.dat, datafile.soils), header = TRUE, stringsAsFactors = FALSE)
+  soil         <- read.csv(file.path(dir.sw.dat, datafile.soils),  header = TRUE, stringsAsFactors = FALSE)
   soil_layers  <- read.csv(file.path(dir.in, datafile.soillayers), header = TRUE, stringsAsFactors = FALSE)
   # Insert site names
-  soil[nrow(soil) + 1, "Label"]               <- site
-  soil_layers[nrow(soil_layers) + 1, "Label"] <- site
-  # (Global variables)
-  sw_input_soils[nrow(sw_input_soils), "Label"]               <<- site
-  sw_input_soillayers[nrow(sw_input_soillayers) + 1, "Label"] <<- site  # First modification has to be at the (0 + 1) row, all other mods must be at current (1st) row
-  
+  soil[nrow(soil) + 1, "Label"]               <- label
+  soil_layers[nrow(soil_layers) + 1, "Label"] <- label
+  # [Global variables] Create a new row in sw_input_soils
+  temprow          <- matrix(c(rep.int(NA, length(sw_input_soils))), nrow=1, ncol=length(sw_input_soils))
+  newrow           <- data.frame(temprow)
+  colnames(newrow) <- colnames(sw_input_soils)
+  sw_input_soils   <<- rbind(sw_input_soils, newrow)
+  # [Global variables] Add info
+  sw_input_soils[nrow(sw_input_soils), "Label"]               <<- label
+  sw_input_soillayers[nrow(sw_input_soillayers) + 1, "Label"] <<- label  # First modification has to be at the (0 + 1) row, all other mods must be at current (1st) row
   # Insert one-time data fields
   soil_layers[nrow(soil_layers), "SoilDepth_cm"] <- hzdepb[length(hzdepb)]  # Store the deepest layer's depth as the max. For some reason, brockdepmin is not a true representation
   sw_input_soillayers[nrow(sw_input_soillayers), "SoilDepth_cm"] <<- hzdepb[length(hzdepb)]
@@ -333,9 +341,9 @@ populate_csv_files <- function(formatted_data, site = "test") {
     update_input_use(paste(column_names$sand, j, sep = ""), sand[j])
     update_input_use(paste(column_names$clay, j, sep = ""), clay[j])
     update_input_use(paste(column_names$matrix, j, sep = ""), dbthirdbar[j])
-    update_soil_texture(1, paste(column_names$sand, j, sep=""), sand[j])
-    update_soil_texture(1, paste(column_names$clay, j, sep=""), clay[j])
-    update_soil_texture(1, paste(column_names$matrix, j, sep=""), dbthirdbar[j])  
+    update_soil_texture(nrow(sw_input_soils), paste(column_names$sand, j, sep=""), sand[j])
+    update_soil_texture(nrow(sw_input_soils), paste(column_names$clay, j, sep=""), clay[j])
+    update_soil_texture(nrow(sw_input_soils), paste(column_names$matrix, j, sep=""), dbthirdbar[j])  
     sw_input_soillayers[nrow(sw_input_soillayers), paste(column_names$depth, j, sep="")] <<- hzdepb[j]  # Set the depth for this layer
   }
   if(failures == length(hzdepb)) {  # All layers failed
@@ -367,12 +375,12 @@ populate_csv_files <- function(formatted_data, site = "test") {
 convert_units <- function(formatted_data) {
   for (i in 1:length(formatted_data$chkey)) {  # The length of any field will work
     # Convert percents to fractions
-    formatted_data$sandtotal.r[i]  <- formatted_data$sandtotal.r[i] / 100
-    formatted_data$silttotal.r[i]  <- formatted_data$silttotal.r[i] / 100
-    formatted_data$claytotal.r[i]  <- formatted_data$claytotal.r[i] / 100
-    formatted_data$fragvol.r[i]    <- formatted_data$fragvol.r[i]   / 100
+    formatted_data$sandtotal.r[i] <- formatted_data$sandtotal.r[i] / 100
+    formatted_data$silttotal.r[i] <- formatted_data$silttotal.r[i] / 100
+    formatted_data$claytotal.r[i] <- formatted_data$claytotal.r[i] / 100
+    formatted_data$fragvol.r[i]   <- formatted_data$fragvol.r[i]   / 100
     # Convert g/cm^3 to mg/m^3
-    formatted_data$dbthirdbar[i]   <- formatted_data$dbthirdbar[i] * 10^9
+    formatted_data$dbthirdbar[i]  <- formatted_data$dbthirdbar[i] * 10^9
   }
   return(formatted_data)
 }
@@ -381,16 +389,9 @@ convert_units <- function(formatted_data) {
 #' @description Flag a global variable that will allow STATSGO data to be extracted within part 3 of 5
 #' @export
 flag_statsgo <- function() {
-  exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA <- TRUE
+  exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA <<- TRUE
 }
 #-------------------------------------
 
-# Driver ---------------------
-if(interactive()) {
-  ptm <- proc.time()             # Record time information for this run
-  download_and_extract_ssurgo()  # Call main function
-  print(proc.time() - ptm)       # Show run-time info
-} else {
-  download_and_extract_ssurgo()
-}
-#-----------------------------
+
+download_and_extract_ssurgo()
