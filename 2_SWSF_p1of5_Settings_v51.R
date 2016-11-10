@@ -38,17 +38,17 @@ rm(list=ls(all=TRUE))
 t.overall <- Sys.time()
 be.quiet <- FALSE
 eta.estimate <- interactive()
-print.debug <- interactive()
+print.debug <- TRUE
 debug.warn.level <- sum(c(print.debug, interactive()))
 debug.dump.objects <- interactive()
 
 #------Mode of framework
 minVersionRsoilwat <- "1.1.2"
 minVersion_dbWeather <- "3.1.0"
-use_rcpp <- TRUE
-num_cores <- 2
+use_rcpp <- FALSE
+num_cores <- 1
 parallel_backend <- "snow" #"snow" or "multicore" or "mpi"
-parallel_runs <- !interactive()
+parallel_runs <- FALSE
 
 #------Rmpi Jobs finish within Wall Time------#
 MaxRunDurationTime <- 1.5 * 60 *60 #Set the time duration for this job [in seconds], i.e. Wall time. As time runs out Rmpi will not send more work. Effects Insert into database and ensembles.
@@ -64,14 +64,14 @@ url.Rrepos <- "https://cran.us.r-project.org"
 
 #------Set paths to simulation framework folders
 #parent folder of simulation project
-dir.prj <- "~/YOURPROJECT"
+dir.prj <- "C:/GIT/Soilwat_R_Wrapper/"
 if (interactive()) setwd(dir.prj)
-dir.prj <- dir.big <- getwd()
+dir.big <- dir.prj
 dir.code <- dir.prj
 
 
 #parent folder containing external data
-dir.external <- "/Volumes/YOURBIGDATA/SoilWat_SimulationFrameworks/SoilWat_DataSet_External"
+dir.external <- "E:/GIS/Data"
 
 #paths to external subfolder
 dir.ex.weather <- file.path(dir.external,"Weather_Past")#historic weather data. Used with Livneh and Maurer Data and ClimateAtlas and NCEPCFSR data.
@@ -101,7 +101,7 @@ dir.out <- file.path(dir.big, "4_Data_SWOutputAggregated")	#path to aggregated o
 #	- output handling
 #		- "concatenate": moves results from the simulation runs (temporary text files) to a SQL-database
 #		- "ensemble": calculates 'ensembles' across climate scenarios and stores the results in additional SQL-databases as specified by 'ensemble.families' and 'ensemble.levels'
-actions <- c("create", "execute", "aggregate", "concatenate")
+actions <- c("create", "external")
 #continues with unfinished part of simulation after abort if TRUE, i.e.,
 #	- it doesn't delete an existing weather database, if a new one is requested
 #	- it doesn't re-extract external information (soils, elevation, climate normals, NCEPCFSR) if already extracted
@@ -109,7 +109,7 @@ actions <- c("create", "execute", "aggregate", "concatenate")
 #	- it doesn't repeat calls to 'do_OneSite' that are listed in 'runIDs_done'
 continueAfterAbort <- TRUE
 #use preprocessed input data if available
-usePreProcessedInput <- TRUE
+usePreProcessedInput <- FALSE
 #stores for each SoilWat simulation a folder with inputs and outputs if TRUE
 saveRsoilwatInput <- FALSE
 saveRsoilwatOutput <- FALSE
@@ -121,6 +121,12 @@ map_vars <- c("ELEV_m", "SoilDepth", "Matricd", "GravelContent", "Sand", "Clay",
 checkCompleteness <- FALSE
 # check linked BLAS library before simulation runs
 check.blas <- FALSE
+
+#---SSURGO
+# WARNING: IF REDO IS TRUE, ALL SUBFILES AND SUBFOLDERS OF SSURGO.DIRECTORY WILL BE DELETED
+#          ENSURE THAT THE SSURGO DIRECTORY IS A UNIQUE FOLDER THAT ONLY HOLDS SSURGO DATA
+SSURGO.Redo <- FALSE  # Re-downloads and extracts SSURGO data for the given coordinates
+SSURGO.Directory <- file.path(dir.prj, "SSURGO")  # Location of downloaded data...There is currently no need to change it
 
 #---Load functions (don't forget the C functions!)
 rSWSF <- file.path(dir.code, "R", "2_SWSF_p5of5_Functions_v51.RData")
@@ -144,10 +150,10 @@ ensembleCollectSize <- 500 #This value is the chunk size for reads of 'runID' fr
 #Daily weather data: must be one of dailyweather_options; WeatherFolder in MasterInput.csv, treatmentDesign.csv, or experimentalDesign.csv
 # If a run has multiple sources for daily weather, then take the one in the first position of dailyweather_options if availble, if not then second etc.
 #	do not change/remove/add entries; only re-order to set different priorities
-dailyweather_options <- c("DayMet_NorthAmerica", "LookupWeatherFolder", "Maurer2002_NorthAmerica", "NRCan_10km_Canada", "NCEPCFSR_Global")
+dailyweather_options <- c("Maurer2002_NorthAmerica", "DayMet_NorthAmerica", "LookupWeatherFolder", "NRCan_10km_Canada", "NCEPCFSR_Global")
 #Daily weather database
 getCurrentWeatherDataFromDatabase <- TRUE
-getScenarioWeatherDataFromDatabase <- TRUE
+getScenarioWeatherDataFromDatabase <- FALSE
 dbWeatherDataFile <- file.path(dir.big, "1_Data_SWInput", "dbWeatherData.sqlite3")
 createAndPopulateWeatherDatabase <- FALSE #TRUE, will create a new(!) database and populate with current data
 dbW_compression_type <- "gzip" # one of eval(formals(memCompress)[[2]]); this only affects dbWeather if createAndPopulateWeatherDatabase
@@ -198,6 +204,7 @@ do.ExtractExternalDatasets <- c(
 		"ExtractElevation_HWSD_Global", 0, #30-arcsec resolution, Harmonized World Soil Database
 
 		#Soil texture
+		"ExtractSoilDataFromSSURGO_USA", 0,
 		"ExtractSoilDataFromCONUSSOILFromSTATSGO_USA", 0,
 		"ExtractSoilDataFromISRICWISEv12_Global", 0
 )
@@ -224,15 +231,15 @@ opt_climsc_extr <- c(
 
 do.PriorCalculations <- c(
 		"ExtendSoilDatafileToRequestedSoilLayers", 0,
-		"EstimateConstantSoilTemperatureAtUpperAndLowerBoundaryAsMeanAnnualAirTemperature", 1,
-		"EstimateInitialSoilTemperatureForEachSoilLayer", 1,
-		"CalculateBareSoilEvaporationCoefficientsFromSoilTexture", 1
+		"EstimateConstantSoilTemperatureAtUpperAndLowerBoundaryAsMeanAnnualAirTemperature", 0,
+		"EstimateInitialSoilTemperatureForEachSoilLayer", 0,
+		"CalculateBareSoilEvaporationCoefficientsFromSoilTexture", 0
 )
 
 #------Time frames of simulation (if not specified in the treatment datafile)
 #	current simulation years = simstartyr:endyr
 #	years used for results = startyr:endyr
-simstartyr  <- 1979
+simstartyr  <- 1989
 startyr <- getStartYear(simstartyr)
 endyr <- 2010
 
@@ -306,7 +313,7 @@ if ((any(actions == "external") || any(actions == "create") || any(actions == "e
 	datafile.cloud <- "SWRuns_InputData_cloud_v10.csv"
 	datafile.prod <- "SWRuns_InputData_prod_v10.csv"
 	datafile.siteparam <- "SWRuns_InputData_siteparam_v13.csv"
-	datafile.soils <- "SWRuns_InputData_soils_v11.csv"
+	datafile.soils <- "SWRuns_InputData_soils_WISE_v11.csv"
 	datafile.weathersetup <- "SWRuns_InputData_weathersetup_v10.csv"
 }
 if (( any(actions == "external") || any(actions == "create") || any(actions == "execute") || any(actions == "aggregate")) ) {	#input files in sub-folders ./treatments

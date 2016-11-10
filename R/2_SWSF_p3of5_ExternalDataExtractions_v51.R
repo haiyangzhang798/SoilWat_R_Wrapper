@@ -669,7 +669,7 @@ if (exinfo$ExtractClimateChangeScenarios) {
 #------Load additional parameters and functions for data from the Lawrence Livermore National Lab and from USGS NEX
 
 if (exinfo$ExtractClimateChangeScenarios &&
-    any(exinfo$which_NEX) || any(exinfo$which_netCDF)) {
+    (any(exinfo$which_NEX) || any(exinfo$which_netCDF))) {
 	stopifnot(getCurrentWeatherDataFromDatabase, getScenarioWeatherDataFromDatabase)
 
 	Rsoilwat31::dbW_setConnection(dbFilePath=dbWeatherDataFile)
@@ -2629,7 +2629,7 @@ if (exinfo$ExtractClimateChangeScenarios &&
 #------EXTRACT CLIMATE CHANGE DATA------
 
 if (exinfo$ExtractClimateChangeScenarios &&
-    any(exinfo$which_NEX) || any(exinfo$which_netCDF)) {
+    (any(exinfo$which_NEX) || any(exinfo$which_netCDF))) {
 
 	#access climate change data
 	get_climatechange_data <- compiler::cmpfun(function(clim_source, is_netCDF, is_NEX, do_SWRun_sites, include_YN_climscen, climDB_meta) {
@@ -2983,9 +2983,8 @@ if (exinfo$ExtractClimateChangeScenarios && any(exinfo$which_ClimateWizard)) {
 }
 
 #------END CLIMATE CHANGE DATA------
-
-
 #--------------------------------------------------------------------------------------------------#
+
 #------EXTRACT SOIL CHARACTERISTICS------
 if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilDataFromISRICWISEv12_Global) {
 	#allow for multiple sources
@@ -3002,6 +3001,12 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 	did_extract <- c(ExtractSoilDataFromCONUSSOILFromSTATSGO_USA = FALSE,
 	                 ExtractSoilDataFromISRICWISEv12_Global = FALSE)
 
+	if (exinfo$ExtractSoilDataFromSSURGO_USA) {
+	  print("SSURGO ------")
+	  do_extract[[3]] <- is.na(sites_externalsoils_source) | sites_externalsoils_source == "SSURGO_USA"
+	  source(file.path(dir.code, "R", "SSURGO-Download-Extract.R"))
+	}
+	
 	if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA) {
 		if (!be.quiet)
 		  print(paste("Started 'ExtractSoilDataFromCONUSSOILFromSTATSGO_USA' at", Sys.time()))
@@ -3091,12 +3096,12 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 			soil_data[, , "rockvol"] <- ifelse(is.finite(rockvol), rockvol, NA)
 
 			# adjust soil depth by layers with 100% rock volume
-			solid_rock_nl <- apply(soil_data[, , "rockvol"] >= 1 - toln, 1, sum, na.rm = TRUE)
+			solid_rock_nl <- apply(soil_data[, , "rockvol", drop=F] >= 1 - toln, 1, sum, na.rm = TRUE)
 			solid_rock_nl <- 1 + nl - solid_rock_nl
 			solid_rock_cm <- c(0, ldepth)[solid_rock_nl]
 
 			soil_data[, 1, "bedrock"] <- pmin(rockdep_cm, solid_rock_cm) # in most cases == rockdep_cm
-			lys <- 1:max(findInterval(soil_data[, 1, "bedrock"], ldepth), na.rm=TRUE)
+			lys <- 1:max(findInterval(soil_data[, 1, "bedrock", drop=F], ldepth), na.rm=TRUE)
 
 			# sand, silt, and clay
 			ftemp <- file.path(dir.ex.conus, "sand_cond0.tif")
