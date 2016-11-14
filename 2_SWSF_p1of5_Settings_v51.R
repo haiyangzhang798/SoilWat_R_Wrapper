@@ -38,7 +38,7 @@ rm(list=ls(all=TRUE))
 t.overall <- Sys.time()
 be.quiet <- FALSE
 eta.estimate <- interactive()
-print.debug <- TRUE
+print.debug <- interactive()
 debug.warn.level <- sum(c(print.debug, interactive()))
 debug.dump.objects <- interactive()
 
@@ -101,7 +101,7 @@ dir.out <- file.path(dir.big, "4_Data_SWOutputAggregated")	#path to aggregated o
 #	- output handling
 #		- "concatenate": moves results from the simulation runs (temporary text files) to a SQL-database
 #		- "ensemble": calculates 'ensembles' across climate scenarios and stores the results in additional SQL-databases as specified by 'ensemble.families' and 'ensemble.levels'
-actions <- c("create", "external")
+actions <- c("create", "execute", "aggregate", "concatenate")
 #continues with unfinished part of simulation after abort if TRUE, i.e.,
 #	- it doesn't delete an existing weather database, if a new one is requested
 #	- it doesn't re-extract external information (soils, elevation, climate normals, NCEPCFSR) if already extracted
