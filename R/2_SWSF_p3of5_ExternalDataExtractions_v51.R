@@ -2986,7 +2986,7 @@ if (exinfo$ExtractClimateChangeScenarios && any(exinfo$which_ClimateWizard)) {
 #--------------------------------------------------------------------------------------------------#
 
 #------EXTRACT SOIL CHARACTERISTICS------
-if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilDataFromISRICWISEv12_Global) {
+if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilDataFromISRICWISEv12_Global || exinfo$ExtractSoilDataFromSSURGO_USA) {
 	#allow for multiple sources
 	if (extract_determine_database == "SWRunInformation" && "SoilTexture_source" %in% colnames(SWRunInformation)) {
 		sites_externalsoils_source <- SWRunInformation$SoilTexture_source[runIDs_sites]

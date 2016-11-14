@@ -3,6 +3,7 @@
 
 library(FedData)  # For downloading and extracting SSURGO data
 
+
 ################
 # Main function
 ################
@@ -70,64 +71,62 @@ download_and_extract_ssurgo <- function() {
       return(NULL)
     }
     )
-
+    # Check if FedData was able to download and extract the files
+    if (is.null(soil_data)) next
+    
     ##############
     # Choose keys
     ##############
-    # Check if FedData was able to download and extract the files
-    if (is.not.null(soil_data)) {
-      cat("\n    > Choosing keys...")
-      # Get the mukey, cokey, and chkeys 
-      keys <- tryCatch( {
-        choose_keys(soil_data)
-      },
-      error = function(e) { 
-        cat("\n\nEXTRACTION ERROR\n----------------\nRaw error:\n")
-        print(e)
-        cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep = ""))
-        cat("This is likely because the site data is incomplete.\nSTATSGO will be extracted afterwards.\n")
-        cat("--------------\n\n")
-        flag_statsgo()
-        fill_row_with_NA(label)
-        return(NULL)
-      },
-      warning = function(w) { 
-        cat("\n\nEXTRACTION ERROR\n----------------\nRaw error:\n")
-        print(w)
-        cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep = ""))
-        cat("This is likely because the site data is incomplete.\nSTATSGO will be extracted afterwards.\n")
-        cat("--------------\n\n")
-        flag_statsgo()
-        fill_row_with_NA(label)
-        return(NULL)
-      }
-      )
-      if (length(keys) <=1 ) {  # Not enough keys were chosen, skip site
-        flag_statsgo() 
-        next
-      }   
-
-      ##########
-      # Extract
-      ##########
-      cat("\n    > Extracting needed data from CSV's...")
-      extracted_soil_data <- extract_and_format_soil_data(soil_data, keys)
-      extracted_soil_data <- convert_units(extracted_soil_data)
-      
-      #####################################
-      # Populate CSVs and global variables
-      #####################################
-      cat("\n    > Writing to CSV's and globals...")
-      populate_csv_files(extracted_soil_data, label)
-      
-      ##################
-      # Finishing steps
-      ##################
-      # Update Input Master
-      did_extract[[3]] <- TRUE
-      sites_externalsoils_source[i] <- "SSURGO_USA"
-      cat("\n    > Done!\n\n")
+    cat("\n    > Choosing keys...")
+    # Get the mukey, cokey, and chkeys 
+    keys <- tryCatch( {
+      choose_keys(soil_data)
+    },
+    error = function(e) { 
+      cat("\n\nEXTRACTION ERROR\n----------------\nRaw error:\n")
+      print(e)
+      cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep = ""))
+      cat("This is likely because the site data is incomplete.\nSTATSGO will be extracted afterwards.\n")
+      cat("--------------\n\n")
+      flag_statsgo()
+      fill_row_with_NA(label)
+      return(NULL)
+    },
+    warning = function(w) { 
+      cat("\n\nEXTRACTION ERROR\n----------------\nRaw error:\n")
+      print(w)
+      cat(paste("\nSummary:\nCoordinates (", lat, ", ", lon, ") failed\n", sep = ""))
+      cat("This is likely because the site data is incomplete.\nSTATSGO will be extracted afterwards.\n")
+      cat("--------------\n\n")
+      flag_statsgo()
+      fill_row_with_NA(label)
+      return(NULL)
     }
+    )
+    if (length(keys) <=1 ) {  # Not enough keys were chosen, skip site
+      next
+    }   
+    
+    ##########
+    # Extract
+    ##########
+    cat("\n    > Extracting needed data from CSV's...")
+    extracted_soil_data <- extract_and_format_soil_data(soil_data, keys)
+    extracted_soil_data <- convert_units(extracted_soil_data)
+    
+    #####################################
+    # Populate CSVs and global variables
+    #####################################
+    cat("\n    > Writing to CSV's and globals...")
+    populate_csv_files(extracted_soil_data, label)
+    
+    ##################
+    # Finishing steps
+    ##################
+    # Update Input Master
+    did_extract[[3]] <<- TRUE
+    sites_externalsoils_source[i] <<- "SSURGO_USA"
+    cat("\n    > Done!\n\n")
   }
 }
 
@@ -163,7 +162,7 @@ create_and_set_directory <- function(directory, force_redo) {
   dir.create(directory, showWarnings = F, recursive = T)  # Create new directory
   setwd(directory)  # Set directory
 }
-#-------------------------------------
+
 
 ##################
 # Other functions
@@ -224,7 +223,7 @@ choose_keys <- function(soil_data) {
     return(cokey)
   }
   
-
+  
   # Create a data frame that contains component percent, mukey, cokey, and chkey.
   # 
   # Grabbing data:
@@ -340,7 +339,7 @@ extract_and_format_soil_data <- function(soil_data, keys) {
   component         <- soil_data$tabular$component
   rows              <- component$cokey %in% keys
   component_data    <- component[rows, ][, fields]
-
+  
   ########
   # Merge
   ########
@@ -483,6 +482,7 @@ populate_csv_files <- function(formatted_data, label) {
   # Check if site failed
   #######################
   if(failures == length(hzdepb)) {  # All layers failed
+    cat("\n        > All layers failed; using STATSGO")
     flag_statsgo()
     fill_row_with_NA(label)
   }
