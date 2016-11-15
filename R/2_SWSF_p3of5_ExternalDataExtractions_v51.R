@@ -3002,9 +3002,12 @@ if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA || exinfo$ExtractSoilData
 	                 ExtractSoilDataFromISRICWISEv12_Global = FALSE)
 
 	if (exinfo$ExtractSoilDataFromSSURGO_USA) {
-	  print("SSURGO ------")
+	  if (!be.quiet)
+	    print(paste("Started 'ExtractSoilDataFromSSURGO_USA' at", Sys.time()))
 	  do_extract[[3]] <- is.na(sites_externalsoils_source) | sites_externalsoils_source == "SSURGO_USA"
 	  source(file.path(dir.code, "R", "SSURGO-Download-Extract.R"))
+	  if (!be.quiet)
+	    print(paste("Finished 'ExtractSoilDataFromSSURGO_USA' at", Sys.time()))
 	}
 
 	if (exinfo$ExtractSoilDataFromCONUSSOILFromSTATSGO_USA) {
