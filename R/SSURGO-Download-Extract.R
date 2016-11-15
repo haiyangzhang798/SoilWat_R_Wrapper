@@ -18,6 +18,9 @@
 #' @export
 download_and_extract_ssurgo <- function() {
   
+  ###################
+  # Helper functions
+  ###################
   # The standard error message for the steps in this function.
   # This function will also flag STATSGO and insert an NA row with the correct label.
   error_warning_msg <- function(label, lat, lon) {
@@ -93,7 +96,7 @@ download_and_extract_ssurgo <- function() {
     }
     # Are the horizons filled with NA?
     skip <- FALSE
-    for (i in 1:length(extracted_soil_data$sandtotal.r)) {
+    for (j in 1:length(extracted_soil_data$sandtotal.r)) {
       if (is.na(extracted_soil_data$sandtotal.r) && is.na(extracted_soil_data$claytotal.r) && is.na(extracted_soil_data$silttotal.r)) {
         cat("\n        > All of the horizons lacked data; will fill with STATSGO\n\n")
         flag_statsgo(label)
@@ -118,7 +121,6 @@ download_and_extract_ssurgo <- function() {
     # Finishing steps
     ##################
     # Update global variables (for Input Master)
-    did_extract[[3]]              <<- TRUE
     sites_externalsoils_source[i] <<- "SSURGO_USA"
     cat("\n    > Done!\n\n")
   }
