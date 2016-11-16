@@ -1,6 +1,22 @@
 #' @author Zachary Kramer, \email{zbk3@nau.edu}
 
 
+####################
+# Quick information 
+###################################################################
+# Cases where STATSGO is extracted:
+#   1) SSURGO failed to download/extract with the FedData library
+#   2) Keys were not chosen because the data was incomplete
+#   3) No horizons exist
+#   4) All of the horizons lacked data
+#   5) The soil texture was completely NA for all layers of a site
+###################################################################
+# CSVs that are modified:
+#  1) In this script: datafile.soils, datafile.soillayers
+#  2) In part 3 of 5: input master
+###################################################################
+
+
 ################
 # Main function
 ################
@@ -8,13 +24,11 @@
 #' @description Given sets of coordinates, download the respective SSURGO area for each set, extract
 #' the data into both spatial and tabular files, select a set of keys, extract the respective
 #' data within those keys, and populate soil_WISE.csv and soil_Layers.csv with that data.
-#' @details \preformatted{1) Create and set a directory to store the SSURGO data
-#' 2) Download each site
-#' 3) Extract each site into spatial and tabular data
-#' 4) Choose a cokey, mukey, and the respective chkeys
-#' 5) Extract the necessary data fields from the tabular data
-#' 6) Populate SWRuns_InputData_soils_WISE and SWRuns_InputData_SoilLayers
-#'    a) If data is incomplete, fill it with STATSGO data}
+#' @details \preformatted{1) Pre-steps (libraries, settings, directory)
+#' 2) Download a site and extract it into spatial and tabular data
+#' 3) Choose a cokey, mukey, and the respective chkeys
+#' 4) Extract the necessary data fields from the tabular data
+#' 5) Populate CSVs and global variables}
 #' @export
 download_and_extract_ssurgo <- function() {
   
@@ -22,8 +36,14 @@ download_and_extract_ssurgo <- function() {
   # Helper functions
   ###################
   # The standard error message for the steps in this function.
-  # This function will also flag STATSGO and insert an NA row with the correct label.
-  error_warning_msg <- function(label, lat, lon) {
+  # This function will also flag STATSGO and insert a NA row with the correct label.
+  error_warning_msg <- function(label, lat, lon, msg) {
+    # Print the raw error, if requested
+    if (SSURGO.PrintRawErrors) {
+      cat("\n        Raw errors and enabled in Part 1 of 5:")
+      cat(paste("\n          ", msg))
+    }
+    # Print the summarized error
     cat("\n        > Error")
     cat(paste("\n             > Coordinates (", lat, ", ", lon, ") failed.", sep=""))
     cat(paste("\n             > Please check whether or not SSURGO supports the coordinates."))
@@ -32,19 +52,20 @@ download_and_extract_ssurgo <- function() {
     return(NULL)
   }
   
-  ############
-  # Pre-steps
-  ############
+  ##########
+  # STEP 1
+  ##########
+  
+  #############################################
+  # Pre-steps (libraries, settings, directory)
+  #############################################
   # Require the FedData library
   require(FedData)
   # Grab settings
   coordinates <- SWRunInformation[runIDs_sites, c("X_WGS84", "Y_WGS84")]
   # Set directory
   create_and_set_directory(SSURGO.Directory, SSURGO.Redo)
-  
-  ###########################################
-  # Download, format, and populate each site
-  ###########################################
+  # Iterate through each site
   for (i in 1:nrow(coordinates)) {
     # Get coordinates
     lat   <- coordinates[i, 2]
@@ -54,35 +75,47 @@ download_and_extract_ssurgo <- function() {
     # Create a spatial polygon object to serve as an area to download
     site  <- convert_coords_to_bounding_box(lat, lon)
     
-    ###########
-    # Download
-    ###########
+    #########
+    # STEP 2
+    #########
+    
+    ##################################################################
+    # Download this site and extract it into spatial and tabular data
+    ##################################################################
     # Print out step information
     cat(paste("Site", i, "of", nrow(coordinates)))  # Example: Site 1 of 2
     cat("\n    > Downloading SSURGO data...")
     # Get the NRCS SSURGO data (USA ONLY)
     soil_data <- tryCatch({ get_ssurgo(template = site, label = paste("SOILDATA-", lat, "-", lon, sep=""))},  # Download to a folder: "SOILDATA-[LAT]-[LON]"
-                          error   = function(e) { error_warning_msg(label, lat, lon) },
-                          warning = function(w) { error_warning_msg(label, lat, lon) })
+                          error   = function(e) { error_warning_msg(label, lat, lon, e) },
+                          warning = function(w) { error_warning_msg(label, lat, lon, w) })
     # Check if FedData was able to download and extract the files
     if (is.null(soil_data)) next
     
-    ##############
-    # Choose keys
-    ##############
+    #########
+    # STEP 3
+    #########
+    
+    ###################################################
+    # Choose a cokey, mukey, and the respective chkeys
+    ###################################################
     # Print out step information
     cat("\n    > Choosing keys...")
-    # Call function
+    # Choose keys
     keys <- tryCatch({ choose_keys(soil_data)},
-                     error   = function(e) { error_warning_msg(label, lat, lon) },
-                     warning = function(w) { error_warning_msg(label, lat, lon) })
+                     error   = function(e) { error_warning_msg(label, lat, lon, e) },
+                     warning = function(w) { error_warning_msg(label, lat, lon, w) })
     # Check if enough keys were chosen, if not skip site
-    if (length(keys) <=1) next
+    if (length(keys) <= 1) next
+    
+    #########
+    # STEP 4
+    #########
     
     #################################
     # Extract only the needed fields
     #################################
-    cat("\n    > Extracting needed data from CSV's...")
+    cat("\n    > Extracting needed data from CSVs...")
     extracted_soil_data <- extract_and_format_soil_data(soil_data, keys)
     
     #########################################
@@ -111,10 +144,14 @@ download_and_extract_ssurgo <- function() {
     ################
     extracted_soil_data <- convert_units(extracted_soil_data)
     
+    #########
+    # STEP 5
+    #########
+    
     #####################################
     # Populate CSVs and global variables
     #####################################
-    cat("\n    > Writing to CSV's and globals...")
+    cat("\n    > Writing to CSVs and globals...")
     populate_csv_files(extracted_soil_data, label)
     
     ##################
@@ -138,6 +175,7 @@ is.not.na   <- function(x) return(! is.na(x))
 #' the data filled with NA, so that other external extractions will be able to insert data there.
 #' @param label The matching label for this site in Input Master
 fill_row_with_NA <- function(label) {
+  
   ############
   # Open CSVs
   ############
@@ -147,18 +185,20 @@ fill_row_with_NA <- function(label) {
   #############
   # Add labels
   #############
-  # [CSVs]
+  
+  #######
+  # CSVs
+  #######
   soil[nrow(soil) + 1, "Label"]               <- label
   soil_layers[nrow(soil_layers) + 1, "Label"] <- label
-  # [Globals]
-  sw_input_soils[nrow(sw_input_soils) + 1, "Label"]           <<- label
-  sw_input_soillayers[nrow(sw_input_soillayers) + 1, "Label"] <<- label
-  
-  ############
-  # Save CSVs
-  ############
   write.csv(file = file.path(dir.sw.dat, datafile.soils),  row.names = FALSE, soil)
   write.csv(file = file.path(dir.in, datafile.soillayers), row.names = FALSE, soil_layers)
+  
+  ##########
+  # Globals
+  ##########
+  sw_input_soils[nrow(sw_input_soils) + 1, "Label"]           <<- label
+  sw_input_soillayers[nrow(sw_input_soillayers) + 1, "Label"] <<- label
 }
 
 #' @title Create and set directory
@@ -343,9 +383,9 @@ extract_and_format_soil_data <- function(soil_data, keys) {
   # Extract data
   ###############
   fields            <- c('sandtotal.r', 'claytotal.r', 'silttotal.r', 'dbthirdbar.r','hzdepb.r', 'chkey')  # The fields to grab
-  chorizon          <- soil_data$tabular$chorizon       # Grab the chorizon table
-  rows              <- chorizon$cokey %in% keys         # Grab the rows with a matching chkey
-  chorizon_data     <- chorizon[rows, ][, fields]       # Grab the correct fields
+  chorizon          <- soil_data$tabular$chorizon  # Grab the chorizon table
+  rows              <- chorizon$cokey %in% keys    # Grab the rows with a matching chkey
+  chorizon_data     <- chorizon[rows, ][, fields]  # Grab the correct fields
   fields            <- c('brockdepmin', 'mukey')
   muaggatt          <- soil_data$tabular$muaggatt
   rows              <- muaggatt$mukey %in% keys
@@ -378,7 +418,7 @@ extract_and_format_soil_data <- function(soil_data, keys) {
 }
 
 #' @title Populate the CSVs
-#' @description Take the given input data and populate the respective CSV's for the SOILWAT R Wrapper
+#' @description Take the given input data and populate the respective CSVs for the SOILWAT R Wrapper
 #' @param formatted_data see Value of extract_and_format_soil_data
 populate_csv_files <- function(formatted_data, label) {
   
@@ -416,26 +456,34 @@ populate_csv_files <- function(formatted_data, label) {
   gravel       <- formatted_data$fragvol.r
   column_names <- data.frame(sand="Sand_L", clay="Clay_L", matrix="Matricd_L", depth="depth_L", gravel="GravelContent_L")
   failures     <- 0
-  # Read CSV's
+  # Read CSVs
   soil         <- read.csv(file.path(dir.sw.dat, datafile.soils),  header = TRUE, stringsAsFactors = FALSE)
   soil_layers  <- read.csv(file.path(dir.in, datafile.soillayers), header = TRUE, stringsAsFactors = FALSE)
   
   ########################################################
   # Insert initial variables to CSVs and global variables
   ########################################################
-  # Insert site names in CSVS
-  soil[nrow(soil) + 1, "Label"]               <- label
-  soil_layers[nrow(soil_layers) + 1, "Label"] <- label
-  # Insert one-time data fields
+  
+  #######
+  # CSVs
+  #######
+  # Insert site names
+  soil[nrow(soil) + 1, "Label"]                  <- label
+  soil_layers[nrow(soil_layers) + 1, "Label"]    <- label
+  # Insert the max soil depth
   soil_layers[nrow(soil_layers), "SoilDepth_cm"] <- hzdepb[length(hzdepb)]
-  # [Global variables] Create a new row in sw_input_soils
+  
+  ##########
+  # Globals
+  ##########
+  # Create a new row in sw_input_soils
   temprow          <- matrix(c(rep.int(NA, length(sw_input_soils))), nrow=1, ncol=length(sw_input_soils))
   newrow           <- data.frame(temprow)
   colnames(newrow) <- colnames(sw_input_soils)
   sw_input_soils   <<- rbind(sw_input_soils, newrow)
-  # [Global variables] Add info
+  # Insert site names and the max soil depth
   sw_input_soils[nrow(sw_input_soils), "Label"]                  <<- label
-  sw_input_soillayers[nrow(sw_input_soillayers) + 1, "Label"]    <<- label  # First modification has to be at the (0 + 1) row, all other mods must be at current (1st) row
+  sw_input_soillayers[nrow(sw_input_soillayers) + 1, "Label"]    <<- label  # First modification has to be at the next row, all other mods must be at current row
   sw_input_soillayers[nrow(sw_input_soillayers), "SoilDepth_cm"] <<- hzdepb[length(hzdepb)]
   
   #################################
@@ -443,16 +491,34 @@ populate_csv_files <- function(formatted_data, label) {
   #################################
   dummy <- 0
   if (hzdepb[1] > 15) {
+    # TODO: Check first layer for incomplete data (currently the incremented section does this, but the dummy layer needs it too)
     # We will duplicate the first layer's data into SOILS_WISE, set the first layer depth to 15, THEN insert this site
     cat("\n        > First layer exceeds 15cm; creating a dummy layer")
     dummy <- 1
-    # Fill CSV in with sand, clay, and matrix data
+    
+    ###############################################
+    # Check for incomplete data in the first layer
+    ###############################################
+    # If gravel content is missing, add a value of .01 so SOILWAT will not fail
+    if (is.na(gravel[1])) {
+      cat("\n        > Gravel content is missing in the dummy layer; filling it with 0.01 (this also fills the first 'real' layer)")
+      gravel[1] <- 0.01
+    }
+    
+    #######
+    # CSVs
+    #######
+    # Sand, clay, matrix, and gravel data
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$sand, 1, sep = ""),   row = nrow(soil), value = sand[1])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$clay, 1, sep = ""),   row = nrow(soil), value = clay[1])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$matrix, 1, sep = ""), row = nrow(soil), value = dbthirdbar[1])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$gravel, 1, sep = ""), row = nrow(soil), value = gravel[1])
-    soil_layers[nrow(soil_layers), paste(column_names$depth, 1, sep = "")] <- 15
-    # [Global variables] Update info
+    soil_layers[nrow(soil_layers), paste(column_names$depth, 1, sep = "")] <- 15  # Set this layer to 15cm
+    
+    ##########
+    # Globals
+    ##########
+    # Sand, clay, matrix, and gravel data
     update_input_use(paste(column_names$sand, 1, sep = ""), sand[1])
     update_input_use(paste(column_names$clay, 1, sep = ""), clay[1])
     update_input_use(paste(column_names$matrix, 1, sep = ""), dbthirdbar[1])
@@ -464,13 +530,24 @@ populate_csv_files <- function(formatted_data, label) {
     sw_input_soillayers[nrow(sw_input_soillayers), paste(column_names$depth, 1, sep="")] <<- 15  # Set the depth for this layer
   }
   
-  ############################
-  # Insert incremented fields
-  ############################
+  ###################################
+  # Start: Insert incremented fields
+  ###################################
   for (j in 1:length(hzdepb)) {
-    k <- j + dummy  # If a dummy layer was created, we want use the CURRENT layer's data but insert it into the NEXT layer
-    # Don't record any information if the following fields are empty (because other data is likely also incomplete)
-    if (is.na(sand[j]) && is.na(clay[j]) && is.na(silt[j]) && is.na(dbthirdbar[j])) {
+    
+    ##########################
+    # Account for dummy layer
+    ##########################
+    # If a dummy layer was created, we want use the CURRENT layer's data but insert it into the NEXT layer
+    k <- j + dummy
+    
+    ############################
+    # Check for incomplete data
+    ############################
+    # Skip this layer if it lacks sand, clay, silt, matric, and gravel data
+    #   > This usually occurs when there is a depth recorded, but no texture data
+    #   > Currently this assumes that the LAST layer was the culprit (which could cause issues)
+    if (is.na(sand[j]) && is.na(clay[j]) && is.na(silt[j]) && is.na(dbthirdbar[j]) && is.na(gravel[j])) {
       # Discard the last layer and update the max soil depth
       cat("\n        > Soil texture data incomplete; a layer has been discarded")
       soil_layers[nrow(soil_layers), "SoilDepth_cm"]                 <-  hzdepb[j - 1]
@@ -479,14 +556,27 @@ populate_csv_files <- function(formatted_data, label) {
       failures <- failures + 1
       next
     }
-    # Fill in variables with sand, clay, matrix, and gravel data
-    # [CSVs]
+    # If gravel content is missing, add a value of .01 so SOILWAT will not fail
+    if (is.na(gravel[j])) {
+      cat(paste("\n        > Gravel content is missing for layer ", k, "; filling it with 0.01", sep = ""))
+      gravel[j] <- 0.01
+    }
+    ###################################
+    # Do: Insert incremented fields
+    ###################################
+    
+    #######
+    # CSVs
+    #######
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$sand, k, sep = ""),   row = nrow(soil), value = sand[j])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$clay, k, sep = ""),   row = nrow(soil), value = clay[j])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$matrix, k, sep = ""), row = nrow(soil), value = dbthirdbar[j])
     soil <- flag_and_fill(CSV = soil, column_name = paste(column_names$gravel, k, sep = ""), row = nrow(soil), value = gravel[j])
     soil_layers[nrow(soil_layers), paste(column_names$depth, k, sep = "")] <- hzdepb[j]
-    # [Globals]
+    
+    ##########
+    # Globals
+    ##########
     update_input_use(paste(column_names$sand, k, sep = ""), sand[j])
     update_input_use(paste(column_names$clay, k, sep = ""), clay[j])
     update_input_use(paste(column_names$matrix, k, sep = ""), dbthirdbar[j])
@@ -501,7 +591,9 @@ populate_csv_files <- function(formatted_data, label) {
   #######################
   # Check if site failed
   #######################
-  if(failures == length(hzdepb)) {  # All layers failed
+  if(failures == length(hzdepb)) {
+    # All layers failed
+    # This is a rare case, but is possible in areas where SSURGO is published but knowingly incomplete
     cat("\n        > All layers failed; will fill with STATSGO")
     flag_statsgo(label)
   }
