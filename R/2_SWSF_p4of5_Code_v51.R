@@ -461,7 +461,8 @@ exinfo$use_sim_spatial <-
 	exinfo$ExtractElevation_NED_USA						||
 	exinfo$ExtractElevation_HWSD_Global					||
 	exinfo$ExtractSkyDataFromNOAAClimateAtlas_USA		||
-	exinfo$ExtractSkyDataFromNCEPCFSR_Global
+	exinfo$ExtractSkyDataFromNCEPCFSR_Global  ||
+  exinfo$ExtractSoilDataFromSSURGO_USA
 
 
 #------------------------SPATIAL SETUP OF SIMULATIONS
