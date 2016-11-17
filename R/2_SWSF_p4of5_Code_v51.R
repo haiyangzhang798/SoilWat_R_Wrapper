@@ -178,20 +178,21 @@ if (usePreProcessedInput && file.exists(file.path(dir.in, datafile.SWRWinputs_pr
   )
   include_YN <- SWRunInformation$Include_YN
   labels <- SWRunInformation$Label
+  nrowsClasses <- max(dim(SWRunInformation)[1], 25L, na.rm = TRUE)
 
-  sw_input_soillayers <- tryCatch(swsf_read_csv(file.path(dir.in, datafile.soillayers)),
-    error = print)
+  sw_input_soillayers <- tryCatch(swsf_read_csv(file.path(dir.in, datafile.soillayers),
+    nrowsClasses = nrowsClasses), error = print)
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.in, datafile.treatments)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.in, datafile.treatments),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_treatments_use <- temp[["use"]]
   sw_input_treatments <- temp[["data"]]
   stopifnot(
     !grepl("[[:space:]]", sw_input_treatments$LookupWeatherFolder)	# no space-characters in weather-data names
   )
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.in, datafile.Experimentals)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.in, datafile.Experimentals),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_experimentals_use <- temp[["use"]]
   sw_input_experimentals <- temp[["data"]]
   create_experimentals <- names(sw_input_experimentals_use[sw_input_experimentals_use])
@@ -218,41 +219,41 @@ if (usePreProcessedInput && file.exists(file.path(dir.in, datafile.SWRWinputs_pr
   if (dim(sw_input_experimentals)[2] == 1)
     stop("Experimentals might be tab separated instead of comma.")
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.cloud)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.cloud),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_cloud_use <- temp[["use"]]
   sw_input_cloud <- temp[["data"]]
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.prod)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.prod),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_prod <- temp[["data"]]
   sw_input_prod_use <- temp[["use"]]
   sw_input_prod_use <- sw_input_prod_use | names(sw_input_prod_use) %in% create_experimentals	#update specifications based on experimental design
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.siteparam)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.siteparam),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_site <- temp[["data"]]
   sw_input_site_use <- temp[["use"]]
   sw_input_site_use <- sw_input_site_use | names(sw_input_site_use) %in% create_experimentals	#update specifications based on experimental design
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.soils)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.soils),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_soils <- temp[["data"]]
   sw_input_soils_use <- temp[["use"]]
   sw_input_soils_use <- sw_input_soils_use | names(sw_input_soils_use) %in% create_experimentals	#update specifications based on experimental design
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.weathersetup)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.weathersetup),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_weather_use <- temp[["use"]]
   sw_input_weather <- temp[["data"]]
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.climatescenarios)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.climatescenarios),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_climscen_use <- temp[["use"]]
   sw_input_climscen <- temp[["data"]]
 
-  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.climatescenarios_values)),
-    error = print)
+  temp <- tryCatch(swsf_read_inputfile(file.path(dir.sw.dat, datafile.climatescenarios_values),
+    nrowsClasses = nrowsClasses), error = print)
   sw_input_climscen_values_use <- temp[["use"]]
   sw_input_climscen_values <- temp[["data"]]
 
@@ -964,6 +965,7 @@ if (any(unlist(pcalcs))) {
       has_changed <- FALSE
       sw_input_soils_data <- lapply(var_layers, function(x)
         as.matrix(sw_input_soils[runIDs_adjust_ws, grep(x, names(sw_input_soils))[ids_layers]]))
+      sw_input_soils_data2 <- NULL
 
       for (ils in seq_along(layer_sets)) {
         il_set <- avail_sl_ids == layer_sets[ils]
@@ -1039,7 +1041,9 @@ if (any(unlist(pcalcs))) {
       temp <- icol_bsE[use_layers]
       icols <- temp[sw_input_soils_use[temp]]
       if (length(icols) > 0L) {
-        do_calc <- !all(rowSums(sw_input_soils[runIDs_adjust, icols, drop = FALSE], na.rm = TRUE) > 0)
+        x <- sw_input_soils[runIDs_adjust, icols, drop = FALSE]
+        do_calc <- anyNA(x) || !all(rowSums(x, na.rm = TRUE) > 0)
+        rm(x)
       }
     }
 
@@ -1095,6 +1099,8 @@ if (any(unlist(pcalcs))) {
 
       sw_input_soils_use[icols_bse_notused] <- FALSE
       sw_input_soils[runIDs_adjust, icols_bse_notused] <- 0
+
+      stopifnot(!is.na(sw_input_soils[runIDs_adjust, icols_bsE_used]))
 
       #write data to datafile.soils
       write.csv(reconstitute_inputfile(sw_input_soils_use, sw_input_soils),
@@ -1402,7 +1408,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 
 #------------------------Preparations for simulation run
   if (!be.quiet)
-    print(paste(i_sim, ":", i_label, "started at ", time.sys))
+    print(paste0(i_sim, ": ", i_label, " started at ", time.sys))
 
 	#Check what needs to be done
 	#TODO this currently doesn't work in the database setup
@@ -1772,35 +1778,35 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 			#composition
 			use_it <- sw_input_prod_use[grepl("Composition", names(sw_input_prod_use))]
 			if (any(use_it)) {
-        temp <- with(i_sw_input_prod, cbind(
+        temp <- with(i_sw_input_prod, c(
           Composition_GrassFraction, Composition_ShrubFraction, Composition_TreeFraction,
           Composition_ForbFraction, Composition_BareGround))
-        temp[is.finite(temp) | !use_it] <- 0 # if one is is requested, then put others to 0
-				swRunScenariosData[[1]]@prod@Composition <- temp
+        temp[!is.finite(temp) | !use_it] <- 0 # if one is is requested, then put others to 0
+				swProd_Composition(swRunScenariosData[[1]]) <- temp
 			}
 			#albedo
 			use_it <- sw_input_prod_use[grepl("Albedo", names(sw_input_prod_use))]
 			if (any(use_it)) {
-        temp <- with(i_sw_input_prod, cbind(Grass_Albedo, Shrub_Albedo, Tree_Albedo,
+        temp <- with(i_sw_input_prod, c(Grass_Albedo, Shrub_Albedo, Tree_Albedo,
           Forb_Albedo, BareGround_Albedo))
-        temp[is.finite(temp)] <- 0
+        temp[!is.finite(temp)] <- 0
 				swProd_Albedo(swRunScenariosData[[1]])[use_it] <- temp[use_it]
 			}
 			#constant canopy height
 			use_it <- sw_input_prod_use[grepl("CanopyHeight_Constant", names(sw_input_prod_use))]
 			if (any(use_it)) {
-        temp <- with(i_sw_input_prod, cbind(Grass_CanopyHeight_Constant_cm,
+        temp <- with(i_sw_input_prod, c(Grass_CanopyHeight_Constant_cm,
           Shrub_CanopyHeight_Constant_cm, Tree_CanopyHeight_Constant_cm,
           Forb_CanopyHeight_Constant_cm))
-        temp[is.finite(temp)] <- 0
-				swRunScenariosData[[1]]@prod@CanopyHeight[5, use_it] <- height.datfile[use_it]
+        temp[!is.finite(temp)] <- 0
+        swProd_CanopyHeight(swRunScenariosData[[1]])[5, use_it] <- temp[use_it]
 			}
 			#flag for hydraulic redistribution
 			use_it <- sw_input_prod_use[grepl("HydRed", names(sw_input_prod_use))]
 			if (any(use_it)) {
-				temp <- with(i_sw_input_prod, cbind(Grass_HydRed_OnOff, Shrub_HydRed_OnOff,
-				  Tree_HydRed_OnOff, Forb_HydRed_OnOff))
-        temp[is.finite(temp)] <- 0
+        temp <- with(i_sw_input_prod, c(Grass_HydRed_OnOff, Shrub_HydRed_OnOff,
+          Tree_HydRed_OnOff, Forb_HydRed_OnOff))
+        temp[!is.finite(temp)] <- TRUE
 				swProd_HydrRedstro_use(swRunScenariosData[[1]])[use_it] <- temp[use_it]
 			}
 
@@ -1915,7 +1921,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
         if (length(icol) > d)
           icol <- icol[ld]
 
-        if (length(temp) > 0) {
+        if (length(icol) > 0) {
           luse <- list(use = which(sw_input_soils_use[icol]),
                         other = intersect(
                                   which(!sw_input_soils_use[icol]),
@@ -2859,7 +2865,9 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 		#if(aggregate.timing) OutputTiming <- list()
 		#if(aggregate.timing) GeneralOutputTiming <- matrix(NA,nrow=scenario_No,ncol=2)
 		#aggregate for each scenario
-		for (sc in 1:scenario_No){
+		for (sc in seq_len(scenario_No)) {
+      if (tasks$aggregate <= 0) break
+
 			if(print.debug) print(paste("Start of overall aggregation for scenario:", sc))
 			#HEADER GENERATION REMOVED#
 			#only exclude if 1.) Exclude_ClimateAmbient is true in treatments 2.) That Run is set to Exclude_ClimateAmbient 3.) Our current Scenario is Current
@@ -5439,12 +5447,18 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 				#temporaly save aggregate data
 				P_id <- it_Pid(i_sim, sc, scenario_No, runsN_master, runIDs_sites)
 
-				if (dbOverallColumns > 0 && dbOverallColumns == (nv - 1)) {
+        nv1 <- nv - 1
+				if (dbOverallColumns > 0 && dbOverallColumns == nv1) {
 					resMeans[!is.finite(resMeans)] <- "NULL"
 					resSDs[!is.finite(resSDs)] <- "NULL"
-					temp1 <- paste0(c(P_id, resMeans[1:(nv-1)]), collapse = ",")
-					temp2 <- paste0(c(P_id, resSDs[1:(nv-1)]), collapse = ",")
+					temp1 <- paste0(c(P_id, resMeans[seq_len(nv1)]), collapse = ",")
+					temp2 <- paste0(c(P_id, resSDs[seq_len(nv1)]), collapse = ",")
+
 				} else {
+          print(paste0(i_sim, ": ", i_label, " aggregation unsuccessful:",
+            " incorrect number of aggregated variables: n = ", nv1,
+            " instead of ", dbOverallColumns))
+          tasks$aggregate <- 0L
 					temp1 <- temp2 <- P_id
 				}
 				SQL1 <- paste0("INSERT INTO \"aggregation_overall_mean\" VALUES (", temp1, ");")
@@ -5458,7 +5472,7 @@ do_OneSite <- function(i_sim, i_labels, i_SWRunInformation, i_sw_input_soillayer
 			}
 
 			#Daily Output
-			if(daily_no > 0){
+			if (daily_no > 0 && tasks$aggregate > 0) {
 				dailyList <- list()
 				SQLc <- ""
 				#aggregate for each response variable
@@ -5744,12 +5758,12 @@ if(actionWithSoilWat && runsN_todo > 0){
 
   swsf_env <- new.env(parent = emptyenv())
   load(rSWSF, envir = swsf_env)
-  list.export <- unique(c(ls(envir = swsf_env), list.export))
 
-  list_envs <- list(rSWSF = swsf_env,
-                    local = environment(),
-                    parent = parent.frame(),
-                    global = .GlobalEnv)
+  obj2exp <- gather_objects_for_export(
+    varlist = unique(c(ls(envir = swsf_env), list.export)),
+    list_envs = list(rSWSF = swsf_env, local = environment(),
+      parent = parent.frame(), global = .GlobalEnv))
+
 
 	#ETA calculation
 	if (!be.quiet)
@@ -5760,18 +5774,27 @@ if(actionWithSoilWat && runsN_todo > 0){
 	if (parallel_runs && parallel_init) {
 		#call the simulations depending on parallel backend
 		if (identical(parallel_backend, "mpi")) {
-			mpi.bcast.cmd(library(Rsoilwat31, quietly = TRUE))
-			mpi.bcast.cmd(library(circular, quietly = TRUE))
-			mpi.bcast.cmd(library(SPEI, quietly = TRUE))
-			mpi.bcast.cmd(library(RSQLite, quietly = TRUE))
+			Rmpi::mpi.bcast.cmd(library(Rsoilwat31, quietly = TRUE))
+			Rmpi::mpi.bcast.cmd(library(circular, quietly = TRUE))
+			Rmpi::mpi.bcast.cmd(library(SPEI, quietly = TRUE))
+			Rmpi::mpi.bcast.cmd(library(RSQLite, quietly = TRUE))
 
-      export_objects_to_workers(list.export, list_envs, "mpi")
-      mpi.bcast.cmd(source(file.path(dir.code, "R", "SWSF_cpp_functions.R")))
-      if (print.debug) {
-        mpi.bcast.cmd(print(paste("Slave", mpi.comm.rank(), "has", length(ls()), "objects")))
+      temp <- export_objects_to_workers(obj2exp, "mpi")
+      if (temp) { # Check success of export to MPI workers
+        if (print.debug) {
+          Rmpi::mpi.bcast.cmd(print(paste("Worker", Rmpi::mpi.comm.rank(), "has",
+            length(ls()), "objects")))
+        }
+      } else {
+        print("Rmpi workers have insufficient data to execute jobs")
+        Rmpi::mpi.close.Rslaves()
+        Rmpi::mpi.exit()
+        stop()
       }
-      mpi.bcast.cmd(Rsoilwat31::dbW_setConnection(dbFilePath = dbWeatherDataFile))
-			mpi.bcast.cmd(mpi_work())
+
+      Rmpi::mpi.bcast.cmd(source(file.path(dir.code, "R", "SWSF_cpp_functions.R")))
+      Rmpi::mpi.bcast.cmd(Rsoilwat31::dbW_setConnection(dbFilePath = dbWeatherDataFile))
+			Rmpi::mpi.bcast.cmd(mpi_work())
 
 			junk <- 0L
 			closed_slaves <- 0L
@@ -5782,8 +5805,8 @@ tryCatch({
         if (print.debug) {
           print(paste(Sys.time(), ": master is waiting for slaves to communicate"))
         }
-				complete <- mpi.recv.Robj(mpi.any.source(), mpi.any.tag())
-				complete_info <- mpi.get.sourcetag()
+				complete <- Rmpi::mpi.recv.Robj(Rmpi::mpi.any.source(), Rmpi::mpi.any.tag())
+				complete_info <- Rmpi::mpi.get.sourcetag()
 				slave_id <- complete_info[1]
 				tag <- complete_info[2]
         if (print.debug) {
@@ -5858,9 +5881,9 @@ tryCatch({
 })
 			}
 
-			mpi.bcast.cmd(Rsoilwat31::dbW_disconnectConnection())
-			mpi.bcast.cmd(rm(list=ls())) #do not remove 'ls(all=TRUE)' because there are important .XXX objects that are important for proper slave functioning!
-			mpi.bcast.cmd(gc())
+			Rmpi::mpi.bcast.cmd(Rsoilwat31::dbW_disconnectConnection())
+			Rmpi::mpi.bcast.cmd(rm(list=ls())) #do not remove 'ls(all=TRUE)' because there are important .XXX objects that are important for proper slave functioning!
+			Rmpi::mpi.bcast.cmd(gc())
 			print(runs.completed)
 		}
 
@@ -5870,7 +5893,7 @@ tryCatch({
 			snow::clusterEvalQ(cl, library(SPEI, quietly = TRUE))
 			snow::clusterEvalQ(cl, library(RSQLite, quietly = TRUE))
 
-      export_objects_to_workers(list.export, list_envs, "snow", cl)
+      export_objects_to_workers(obj2exp, "snow", cl)
       snow::clusterEvalQ(cl, source(file.path(dir.code, "R", "SWSF_cpp_functions.R")))
 			snow::clusterEvalQ(cl, Rsoilwat31::dbW_setConnection(dbFilePath = dbWeatherDataFile))
 
@@ -6159,14 +6182,14 @@ if(checkCompleteness){
 	if(parallel_runs && parallel_init){
 		#call the simulations depending on parallel backend
 		if(identical(parallel_backend, "mpi")) {
-			mpi.bcast.cmd(library(RSQLite,quietly = TRUE))
+			Rmpi::mpi.bcast.cmd(library(RSQLite,quietly = TRUE))
 
-			numberMissing <- mpi.applyLB(x=Tables, fun=checkForMissing, database=name.OutputDB)
+			numberMissing <- Rmpi::mpi.applyLB(x=Tables, fun=checkForMissing, database=name.OutputDB)
 			TotalMissing <- sum(unlist(numberMissing))
 
 			print(paste("dbTables.sqlite3 is missing : ",TotalMissing,"",sep=""))
 
-			numberMissing <- mpi.applyLB(x=Tables, fun=checkForMissing, database=name.OutputDBCurrent)
+			numberMissing <- Rmpi::mpi.applyLB(x=Tables, fun=checkForMissing, database=name.OutputDBCurrent)
 			TotalMissing <- sum(unlist(numberMissing))
 
 			print(paste("dbTables_current.sqlite3 is missing : ",TotalMissing,"",sep=""))
@@ -6391,9 +6414,9 @@ if(do.ensembles && all.complete && (actionWithSoilWat && runs.completed == runsN
 		if(identical(parallel_backend, "mpi")) {
 			export_objects_to_workers(list.export, list(global = .GlobalEnv), "mpi")
 
-			mpi.bcast.cmd(library(RSQLite,quietly = TRUE))
+			Rmpi::mpi.bcast.cmd(library(RSQLite,quietly = TRUE))
 
-			ensembles.completed <- mpi.applyLB(x=Tables, fun=collect_EnsembleFromScenarios)
+			ensembles.completed <- Rmpi::mpi.applyLB(x=Tables, fun=collect_EnsembleFromScenarios)
 			ensembles.completed <- sum(unlist(ensembles.completed))
 		} else if(identical(parallel_backend, "snow")) {
 			export_obj_local <- list.export[list.export %in% ls(name=environment())]
@@ -6466,8 +6489,8 @@ options(ow)	#sets the warning option to its previous value
 
 if(parallel_runs && parallel_init){
 	if(identical(parallel_backend, "mpi")) {	#clean up mpi slaves
-		mpi.close.Rslaves(dellog=FALSE)
-		mpi.exit()
+		Rmpi::mpi.close.Rslaves(dellog=FALSE)
+		Rmpi::mpi.exit()
 	}
 	if(identical(parallel_backend, "snow")){
 		snow::stopCluster(cl)	#clean up snow cluster

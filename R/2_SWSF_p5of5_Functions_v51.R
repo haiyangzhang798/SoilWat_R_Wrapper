@@ -15,25 +15,39 @@ toln <- sqrt(.Machine$double.neg.eps)
 
 #------ Funtions
 swsf_read_csv <- compiler::cmpfun(function(file, stringsAsFactors = FALSE, ...) {
-  if (requireNamespace("iotools", quietly = TRUE)) {
+  dots <- list(...)
+  dots[["file"]] <- file
+  dots[["stringsAsFactors"]] <- stringsAsFactors
+  use_iotools <- requireNamespace("iotools", quietly = TRUE)
+  res <- NULL
+
+  if (use_iotools) {
     # faster than utils::read.csv
-    temp <- try(iotools::read.csv.raw(file = file, ...), silent = TRUE)
+    dots2 <- dots[names(dots) %in% names(formals(iotools::read.csv.raw))]
+    if (!any(names(dots2) == "nrowsClasses"))
+      dots2[["nrowsClasses"]] <- 1000L
+
+    temp <- try(do.call(iotools::read.csv.raw, args = dots2), silent = TRUE)
     if (inherits(temp, "try-error")) {
-      read.csv(file = file, stringsAsFactors = stringsAsFactors, ...)
+      use_iotools <- FALSE
     } else {
       names(temp) <- gsub("\"", "", names(temp))
-      temp
+      res <- temp
     }
-
-  } else {
-    read.csv(file = file, stringsAsFactors = stringsAsFactors, ...)
   }
+
+  if (!use_iotools) {
+    dots2 <- dots[names(dots) %in% names(formals(utils::read.csv))]
+    res <- try(do.call(utils::read.csv, args = dots2), silent = TRUE)
+  }
+
+  res
 })
 
-swsf_read_inputfile <- compiler::cmpfun(function(file, header_rows = 1) {
+swsf_read_inputfile <- compiler::cmpfun(function(file, header_rows = 1, ...) {
   sw_use <- tryCatch(swsf_read_csv(file, nrows = header_rows),
     error = function(e) print(paste("Failed to read file:", shQuote(basename(file)), "with", e)))
-  sw <- swsf_read_csv(file, skip = header_rows)
+  sw <- swsf_read_csv(file, skip = header_rows, ...)
   names(sw) <- names(sw_use)
   sw_use <- c(FALSE, as.logical(as.numeric(sw_use[, -1])))
   sw_use[is.na(sw_use)] <- FALSE
@@ -129,7 +143,7 @@ file.copy2 <- compiler::cmpfun(function(from="", to="", overwrite=TRUE, copy.mod
 dir.create2 <- compiler::cmpfun(function(path, showWarnings = TRUE, recursive = FALSE, mode = "0777", times = 0) {
   dir.create(path, showWarnings, recursive, mode)
   if(times < 24)
-    if(!file.exists(path)) {
+    if(!dir.exists(path)) {
       print("trying to make directory again")
       Recall(path, showWarnings, TRUE, mode, (times+1)) #recursively call the function b/c when run on JANUS with MPI it doesn't seem to make the directories everytime... quite aggravating.
     }
@@ -254,22 +268,19 @@ it_Pid <- compiler::cmpfun(function(isim, sc, scN, runN, runIDs) {
 #' @param cl A snow cluster object
 #'
 #' @return A logical value. \code{TRUE} if every object was exported successfully.
-export_objects_to_workers <- compiler::cmpfun(function(varlist, list_envs, parallel_backend = c("mpi", "snow"), cl = NULL) {
-  t.bcast <- Sys.time()
-  parallel_backend <- match.arg(parallel_backend)
-  print(paste("Exporting", length(varlist), "objects from master process to workers/slaves"))
-
+gather_objects_for_export <- compiler::cmpfun(function(varlist, list_envs) {
   #---Determine environments
-  export_oe <- list()
+  obj_env <- new.env(parent = emptyenv())
   vtemp <- NULL
 
   for (k in seq_along(list_envs)) {
     temp <- varlist[varlist %in% ls(pos = list_envs[[k]])]
-    export_oe[[k]] <- list(
-        varlist = temp[!(temp %in% vtemp)],
-        envir = list_envs[[k]]
-      )
-    vtemp <- c(vtemp, export_oe[[k]][["varlist"]])
+    temp <- temp[!(temp %in% vtemp)]
+
+    for (i in seq_along(temp))
+      assign(temp[i], value = get(temp[i], list_envs[[k]]), obj_env)
+
+    vtemp <- c(vtemp, temp)
   }
 
   cannot_export <- !(varlist %in% vtemp)
@@ -277,52 +288,63 @@ export_objects_to_workers <- compiler::cmpfun(function(varlist, list_envs, paral
     print(paste("Objects in 'varlist' that cannot be located:",
           paste(varlist[cannot_export], collapse = ", ")))
 
+  obj_env
+})
 
-  #---Export objects from environments
-  success <- TRUE
 
-  for (k in seq_along(export_oe)) {
-    if (!is.null(export_oe[[k]][["varlist"]]) &&
-        !is.null(export_oe[[k]][["envir"]])) {
+do_import_objects <- compiler::cmpfun(function(obj_env) {
+  temp <- list2env(as.list(obj_env), envir = .GlobalEnv)
 
-      if (identical(parallel_backend, "snow")) {
-        temp <- try(snow::clusterExport(cl, export_oe[[k]][["varlist"]],
-                            envir = export_oe[[k]][["envir"]]))
+  NULL
+})
 
-        if (inherits(temp, "try-error"))
-          success <- FALSE
 
-      } else if (identical(parallel_backend, "mpi")) {
+export_objects_to_workers <- compiler::cmpfun(function(obj_env, parallel_backend = c("mpi", "snow"), cl = NULL) {
+  t.bcast <- Sys.time()
+  parallel_backend <- match.arg(parallel_backend)
+  N <- length(ls(obj_env))
+  print(paste("Exporting", N, "objects from master process to workers"))
 
-        if (any(c("obj__", "x__") %in% export_oe[[k]][["varlist"]]))
-          stop("R objects with names 'obj__' and 'x__' cannot be exported to workers/slaves")
+  success <- FALSE
+  done_N <- 0
 
-        temp <- try(lapply(export_oe[[k]][["varlist"]], function(obj__) {
-            Rmpi::mpi.bcast.Robj2slave(obj__)
-            x__ <- get(obj__, pos = export_oe[[k]][["envir"]])
-            Rmpi::mpi.bcast.Robj2slave(x__)
-            Rmpi::mpi.bcast.cmd(assign(obj__, x__, pos = .GlobalEnv))
-          }))
+  if (inherits(cl, "cluster") && identical(parallel_backend, "snow")) {
+    temp <- try(snow::clusterExport(cl, as.list(ls(obj_env)), envir = obj_env))
 
-        if (inherits(temp, "try-error")) {
-          success <- FALSE
-        } else {
-          Rmpi::mpi.bcast.cmd(rm(obj__, x__))
-        }
-      }
+    success <- !inherits(temp, "try-error")
+
+    if (success) {
+      done_N <- min(unlist(snow::clusterCall(cl,
+        function() length(ls(.GlobalEnv)))), na.rm = TRUE)
+    }
+
+  } else if (identical(parallel_backend, "mpi")) {
+    temp <- try(Rmpi::mpi.bcast.cmd(assign,
+      x = "do_import_objects", value = do_import_objects))
+    if (!inherits(temp, "try-error"))
+      temp <- try(Rmpi::mpi.bcast.cmd(do_import_objects, obj_env = obj_env))
+
+    success <- !inherits(temp, "try-error")
+    if (success) {
+      done_N <- min(lengths(Rmpi::mpi.remote.exec(cmd = ls,
+        envir = .GlobalEnv, simplify = FALSE)))
     }
   }
 
-  if (success) {
-    print(paste("Exporting", length(vtemp), "objects took",
+  if (success && done_N >= N) {
+    print(paste("Export of", done_N, "objects took",
               round(difftime(Sys.time(), t.bcast, units = "secs"), 2),
               "secs"))
   } else {
-    print("Export not successful")
+    success <- FALSE
+    print(paste("Export not successful:", done_N, "instead of", N, "objects exported"))
   }
 
   success
 })
+
+
+
 
 
 #' Rmpi work function for calling \code{do_OneSite}
@@ -2391,16 +2413,17 @@ get_NCEPCFSR_data <- compiler::cmpfun(function(dat_sites, daily = FALSE, monthly
 
     # set up parallel
     if (do_parallel) {
-      list.export <- c("load_NCEPCFSR_shlib", "cfsr_so", "dir.in.cfsr") #objects that need exporting to slaves
-	    list_envs <- list(local = environment(), parent = parent.frame(), global = .GlobalEnv)
+      obj2exp <- gather_objects_for_export(
+        varlist = c("load_NCEPCFSR_shlib", "cfsr_so", "dir.in.cfsr"),
+        list_envs = list(local = environment(), parent = parent.frame(), global = .GlobalEnv))
 
       if (identical(parallel_backend, "mpi")) {
-        export_objects_to_workers(list.export, list_envs, "mpi")
+        export_objects_to_workers(obj2exp, "mpi")
         Rmpi::mpi.bcast.cmd(load_NCEPCFSR_shlib(cfsr_so))
         Rmpi::mpi.bcast.cmd(setwd(dir.in.cfsr))
 
       } else if (identical(parallel_backend, "snow")) {
-        export_objects_to_workers(list.export, list_envs, "snow", cl)
+        export_objects_to_workers(obj2exp, "snow", cl)
         snow::clusterEvalQ(cl, load_NCEPCFSR_shlib(cfsr_so))
         snow::clusterEvalQ(cl, setwd(dir.in.cfsr))
       }
@@ -2457,6 +2480,7 @@ get_NCEPCFSR_data <- compiler::cmpfun(function(dat_sites, daily = FALSE, monthly
             nMonthlyWrites <- do.call(sum, nMonthlyWrites)
           }
         } else if (identical(parallel_backend, "multicore")) {
+          list.export <- ls(obj2exp)
           if (daily) {
             nDailyReads <- foreach::foreach(id = 1:nrow(do_daily), .combine="sum", .errorhandling="remove", .inorder=FALSE, .export=list.export) %dopar%
               gribDailyWeatherData(id, do_daily=do_daily, nSites=ntemp, latitudes=lats, longitudes=longs)
@@ -2597,12 +2621,12 @@ update_biomass <- compiler::cmpfun(function(funct_veg = c("Grass", "Shrub", "Tre
   comps <- c("_Litter", "_Biomass", "_FractionLive", "_LAIconv")
   veg_ids = lapply(comps, function(x)
     grep(paste0(funct_veg, x), names(use)))
-  veg_incl = lapply(vegs_ids, function(x) use[x])
+  veg_incl = lapply(veg_ids, function(x) use[x])
 
   temp <- slot(prod_default, paste0("MonthlyProductionValues_", tolower(funct_veg)))
   if (any(unlist(veg_incl))) {
     for (k in seq_along(comps)) if (any(veg_incl[[k]]))
-      temp[veg_incl[[k]], k] <- prod_input[, veg_ids[[k]][veg_incl[[k]]]]
+      temp[veg_incl[[k]], k] <- as.numeric(prod_input[, veg_ids[[k]][veg_incl[[k]]]])
   }
 
   temp
