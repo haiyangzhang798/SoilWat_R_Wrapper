@@ -101,7 +101,7 @@ dir.out <- file.path(dir.big, "4_Data_SWOutputAggregated")	#path to aggregated o
 #	- output handling
 #		- "concatenate": moves results from the simulation runs (temporary text files) to a SQL-database
 #		- "ensemble": calculates 'ensembles' across climate scenarios and stores the results in additional SQL-databases as specified by 'ensemble.families' and 'ensemble.levels'
-actions <- c("create", "execute", "aggregate", "concatenate")
+actions <- c("create", "external", "execute", "aggregate", "concatenate")
 #continues with unfinished part of simulation after abort if TRUE, i.e.,
 #	- it doesn't delete an existing weather database, if a new one is requested
 #	- it doesn't re-extract external information (soils, elevation, climate normals, NCEPCFSR) if already extracted
@@ -127,6 +127,7 @@ check.blas <- FALSE
 #          ENSURE THAT THE SSURGO DIRECTORY IS A UNIQUE FOLDER THAT ONLY HOLDS SSURGO DATA
 SSURGO.Redo <- FALSE  # Re-downloads and extracts SSURGO data for the given coordinates
 SSURGO.Directory <- file.path(dir.prj, "SSURGO")  # Location of downloaded data...There is currently no need to change it
+SSURGO.PrintRawErrors <- FALSE
 
 #---Load functions (don't forget the C functions!)
 rSWSF <- file.path(dir.code, "R", "2_SWSF_p5of5_Functions_v51.RData")
@@ -155,7 +156,7 @@ dailyweather_options <- c("Maurer2002_NorthAmerica", "DayMet_NorthAmerica", "Loo
 getCurrentWeatherDataFromDatabase <- TRUE
 getScenarioWeatherDataFromDatabase <- FALSE
 dbWeatherDataFile <- file.path(dir.big, "1_Data_SWInput", "dbWeatherData.sqlite3")
-createAndPopulateWeatherDatabase <- FALSE #TRUE, will create a new(!) database and populate with current data
+createAndPopulateWeatherDatabase <- TRUE #TRUE, will create a new(!) database and populate with current data
 dbW_compression_type <- "gzip" # one of eval(formals(memCompress)[[2]]); this only affects dbWeather if createAndPopulateWeatherDatabase
 
 #-Spatial setup of simulations
@@ -187,7 +188,7 @@ extract_determine_database <- "SWRunInformation" # one of c("order", "SWRunInfor
 # External datasets
 do.ExtractExternalDatasets <- c(
 		#Daily weather data for current conditions
-		"GriddedDailyWeatherFromMaurer2002_NorthAmerica", 0,	#1/8-degree resolution
+		"GriddedDailyWeatherFromMaurer2002_NorthAmerica", 1,	#1/8-degree resolution
 		"GriddedDailyWeatherFromDayMet_NorthAmerica", 0,	#1-km resolution
 		"GriddedDailyWeatherFromNRCan_10km_Canada", 0,	# can only be used together with database
 		"GriddedDailyWeatherFromNCEPCFSR_Global", 0, # can only be used together with database
@@ -204,7 +205,7 @@ do.ExtractExternalDatasets <- c(
 		"ExtractElevation_HWSD_Global", 0, #30-arcsec resolution, Harmonized World Soil Database
 
 		#Soil texture
-		"ExtractSoilDataFromSSURGO_USA", 0,
+		"ExtractSoilDataFromSSURGO_USA", 1,
 		"ExtractSoilDataFromCONUSSOILFromSTATSGO_USA", 0,
 		"ExtractSoilDataFromISRICWISEv12_Global", 0
 )
