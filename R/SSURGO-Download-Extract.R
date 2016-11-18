@@ -128,17 +128,12 @@ download_and_extract_ssurgo <- function() {
       next
     }
     # Are the horizons filled with NA?
-    skip <- FALSE
-    for (j in 1:length(extracted_soil_data$sandtotal.r)) {
-      if (is.na(extracted_soil_data$sandtotal.r) && is.na(extracted_soil_data$claytotal.r) && is.na(extracted_soil_data$silttotal.r)) {
-        cat("\n        > All of the horizons lacked data; will fill with STATSGO\n\n")
-        flag_statsgo(label)
-        skip <- TRUE
-        break
-      }
+    if (is.na(extracted_soil_data$sandtotal.r) && is.na(extracted_soil_data$claytotal.r) && is.na(extracted_soil_data$silttotal.r) && is.na(extracted_soil_data$dbthirdbar)) {
+      cat("\n        > All of the horizons lacked data; will fill with STATSGO\n\n")
+      flag_statsgo(label)
+      next
     }
-    if (skip) next
-    
+
     ################
     # Convert units
     ################
@@ -561,6 +556,7 @@ populate_csv_files <- function(formatted_data, label) {
       cat(paste("\n        > Gravel content is missing for layer ", k, "; filling it with 0.01", sep = ""))
       gravel[j] <- 0.01
     }
+    
     ###################################
     # Do: Insert incremented fields
     ###################################
